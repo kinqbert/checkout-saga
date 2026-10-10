@@ -2,5 +2,10 @@
   "name": "checkout-saga",
   "private": true,
   "packageManager": "pnpm@11.8.0",
-  "engines": { "node": ">=24" }
+  "scripts": {
+    "docker-up": "docker compose -f ./infra/docker-compose.yaml up -d"
+  },
+  "engines": {
+    "node": ">=24"
+  }
 }

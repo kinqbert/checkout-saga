@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - dbdata:/var/lib/postgresql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+  nats:
+    image: nats:2.11-alpine
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - natsdata:/data
+    restart: unless-stopped
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    healthcheck:
+      test: wget http://localhost:8222/healthz?js-enabled-only=true -q -S -O -
+      interval: 10s
+      retries: 10
+
+volumes:
+  dbdata:
+  natsdata:
