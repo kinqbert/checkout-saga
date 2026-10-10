@@ -1,0 +1,6 @@
+{
+  "name": "checkout-saga",
+  "private": true,
+  "packageManager": "pnpm@11.8.0",
+  "engines": { "node": ">=24" }
+}
