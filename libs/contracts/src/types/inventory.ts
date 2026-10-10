@@ -7,6 +7,7 @@ export const Item = z.object({
   sku: z.string().min(1),
   quantity: z.int().min(1),
 });
+export type Item = z.infer<typeof Item>;
 
 // COMMAND SCHEMAS
 export const ReserveStockCmd = Envelope.extend({
