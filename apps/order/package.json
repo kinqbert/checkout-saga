@@ -8,8 +8,5 @@
   },
   "dependencies": {
     "@checkout/contracts": "workspace:*"
-  },
-  "devDependencies": {
-    "vitest": "^5.0.3"
   }
 }
