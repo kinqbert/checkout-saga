@@ -3,10 +3,18 @@
   "private": true,
   "scripts": {
     "build": "tsc",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "db:generate": "pnpm npx drizzle-kit generate",
+    "db:migrate": "pnpm npx drizzle-kit migrate"
   },
   "dependencies": {
-    "@checkout/contracts": "workspace:*"
+    "@checkout/contracts": "workspace:*",
+    "dotenv": "^18.0.7",
+    "drizzle-orm": "1.0.0-rc.4",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "1.0.0-rc.4",
+    "tsx": "^4.23.15"
   }
 }

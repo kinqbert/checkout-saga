@@ -9,12 +9,15 @@ import {
   ReserveStockCmd,
 } from "@checkout/contracts";
 
-export type SagaState =
-  | "AWAITING_STOCK"
-  | "AWAITING_PAYMENT"
-  | "RELEASING_STOCK"
-  | "CONFIRMED"
-  | "CANCELLED";
+export const SagaStates = [
+  "AWAITING_STOCK",
+  "AWAITING_PAYMENT",
+  "RELEASING_STOCK",
+  "CONFIRMED",
+  "CANCELLED",
+] as const;
+
+export type SagaState = (typeof SagaStates)[number];
 
 type SentMessage =
   | ReserveStockCmd
