@@ -1,21 +1,22 @@
 import {
+  bigserial,
+  index,
   integer,
   jsonb,
-  pgSchema,
   snakeCase,
   text,
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
 import { SagaStates } from "../saga/saga.types";
-import { Item } from "@checkout/contracts";
+import { Envelope, Item } from "@checkout/contracts";
+import { isNull } from "drizzle-orm";
 
 const timefields = {
-  createdAt: timestamp()
+  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp({ withTimezone: true })
     .defaultNow()
-    .$onUpdate(() => new Date()),
-  updatedAt: timestamp()
-    .defaultNow()
+    .notNull()
     .$onUpdate(() => new Date()),
 };
 
@@ -31,3 +32,15 @@ export const orders = ordersSchema.table("orders", {
   cancelReason: text(),
   ...timefields,
 });
+
+export const outbox = ordersSchema.table(
+  "outbox",
+  {
+    id: uuid().primaryKey(),
+    seq: bigserial({ mode: "number" }),
+    subject: text().notNull(),
+    envelope: jsonb().$type<Envelope>().notNull(),
+    publishedAt: timestamp({ withTimezone: true }),
+  },
+  (table) => [index().on(table.seq).where(isNull(table.publishedAt))],
+);

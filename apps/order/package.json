@@ -3,8 +3,8 @@
   "private": true,
   "scripts": {
     "build": "tsc",
-    "db:generate": "pnpm npx drizzle-kit generate",
-    "db:migrate": "pnpm npx drizzle-kit migrate"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@checkout/contracts": "workspace:*",
