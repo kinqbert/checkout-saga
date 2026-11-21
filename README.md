@@ -85,7 +85,7 @@ Requirements: Docker, Node 24, pnpm 11.
 
 ```bash
 pnpm install
-pnpm up            # builds one image, starts Postgres, NATS and all services
+pnpm docker-up     # builds one image, starts Postgres, NATS and all services
 open http://localhost:8080
 pnpm e2e           # end-to-end check of every saga path against the running stack
 ```
@@ -98,12 +98,12 @@ pnpm dev           # builds libs, then watches every service and the web app
 open http://localhost:5173
 ```
 
-Other scripts: `pnpm test` (saga unit tests), `pnpm logs`, `pnpm down`, `pnpm reset` (also deletes volumes).
+Other scripts: `pnpm test` (saga unit tests), `pnpm docker-logs`, `pnpm docker-down`, `pnpm docker-reset` (also deletes volumes).
 
 Things to try:
 
 - `docker compose -f infra/docker-compose.yaml stop payment`, place an order (it waits in *Awaiting payment*), then `start payment` and watch it finish.
-- `PAYMENT_RANDOM_FAILURE_RATE=0.3 pnpm up` to see random declines and compensations.
+- `PAYMENT_RANDOM_FAILURE_RATE=0.3 pnpm docker-up` to see random declines and compensations.
 - `curl -X PATCH localhost:8080/api/products/mug -H 'content-type: application/json' -d '{"price":1500}'`. The order service's catalog copy picks up the new price within milliseconds.
 
 ## Deploying on one VPS

@@ -7,11 +7,11 @@
     "test": "pnpm -r --if-present test",
     "dev": "pnpm build && pnpm -r --parallel dev",
     "infra-up": "docker compose -f infra/docker-compose.yaml up -d db nats",
-    "up": "docker compose -f infra/docker-compose.yaml --profile app up -d --build",
-    "down": "docker compose -f infra/docker-compose.yaml --profile app down",
-    "reset": "docker compose -f infra/docker-compose.yaml --profile app down -v",
     "e2e": "node scripts/e2e.mjs",
-    "logs": "docker compose -f infra/docker-compose.yaml --profile app logs -f"
+    "docker-up": "docker compose -f infra/docker-compose.yaml --profile app up -d --build --wait",
+    "docker-down": "docker compose -f infra/docker-compose.yaml --profile app down",
+    "docker-reset": "docker compose -f infra/docker-compose.yaml --profile app down -v",
+    "docker-logs": "docker compose -f infra/docker-compose.yaml --profile app logs -f"
   },
   "engines": {
     "node": ">=24"

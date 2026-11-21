@@ -1,4 +1,4 @@
-# Full stack: `pnpm up` (or `docker compose -f infra/docker-compose.yaml up -d --build`).
+# Full stack: `pnpm docker-up` (or `docker compose -f infra/docker-compose.yaml up -d --build`).
 # Infra only, for running services with `pnpm dev`: `pnpm infra-up`.
 
 x-app: &app
