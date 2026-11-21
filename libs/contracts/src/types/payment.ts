@@ -1,6 +1,6 @@
 import * as z from "zod";
-import { Envelope } from "../envelope";
-import { ErrorPayload } from "../shared";
+import { Envelope } from "../envelope.js";
+import { ErrorPayload } from "../shared.js";
 
 // COMMANDS
 export const CapturePaymentCmd = Envelope.extend({

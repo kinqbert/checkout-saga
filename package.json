@@ -4,9 +4,14 @@
   "packageManager": "pnpm@11.8.0",
   "scripts": {
     "build": "pnpm -r build",
-    "docker-up": "docker compose -f ./infra/docker-compose.yaml up -d",
-    "docker-down": "docker compose -f infra/docker-compose.yaml down -v",
-    "docker-reset": "pnpm docker-down && pnpm docker-up"
+    "test": "pnpm -r --if-present test",
+    "dev": "pnpm build && pnpm -r --parallel dev",
+    "infra-up": "docker compose -f infra/docker-compose.yaml up -d db nats",
+    "up": "docker compose -f infra/docker-compose.yaml --profile app up -d --build",
+    "down": "docker compose -f infra/docker-compose.yaml --profile app down",
+    "reset": "docker compose -f infra/docker-compose.yaml --profile app down -v",
+    "e2e": "node scripts/e2e.mjs",
+    "logs": "docker compose -f infra/docker-compose.yaml --profile app logs -f"
   },
   "engines": {
     "node": ">=24"
