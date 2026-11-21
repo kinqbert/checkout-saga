@@ -1,4 +1,4 @@
-import { CheckoutSaga, SagaEvent, TransitionResult } from "./saga.types";
+import { CheckoutSaga, SagaEvent, TransitionResult } from "./saga.types.js";
 
 export function handleSagaAwaitingStock(
   saga: CheckoutSaga,

@@ -1,12 +1,9 @@
-import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
 
+// Points at the compiled schema: run `pnpm build` before `pnpm db:generate`.
 export default defineConfig({
   out: "./drizzle",
-  schema: "./src/db/schema.ts",
+  schema: "./dist/db/schema.js",
   schemaFilter: ["orders"],
   dialect: "postgresql",
-  dbCredentials: {
-    url: process.env.DATABASE_URL!,
-  },
 });

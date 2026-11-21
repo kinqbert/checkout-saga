@@ -4,12 +4,12 @@ import {
   OutgoingMessage,
   SagaEvent,
   TransitionResult,
-} from "./saga.types";
+} from "./saga.types.js";
 import {
   handleSagaAwaitingPayment,
   handleSagaAwaitingStock,
   handleSagaReleasingStock,
-} from "./saga.handlers";
+} from "./saga.handlers.js";
 
 export function startSaga(
   orderId: string,
