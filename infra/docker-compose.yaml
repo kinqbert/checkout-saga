@@ -1,31 +1,109 @@
+# Full stack: `pnpm up` (or `docker compose -f infra/docker-compose.yaml up -d --build`).
+# Infra only, for running services with `pnpm dev`: `pnpm infra-up`.
+
+x-app: &app
+  image: checkout-saga:local
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  init: true
+  restart: unless-stopped
+  mem_limit: 256m
+  depends_on:
+    db: { condition: service_healthy }
+    nats: { condition: service_healthy }
+    trace-relay: { condition: service_started }
+  environment: &env
+    DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/checkout-saga
+    NATS_URL: nats://nats:4222
+    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://trace-relay:4318/v1/traces
+
 services:
   db:
     image: postgres:18-alpine
     environment:
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: checkout-saga
     ports:
-      - "5433:5432"
+      - "${DB_PORT:-5433}:5432"
     volumes:
       - dbdata:/var/lib/postgresql
     restart: unless-stopped
+    mem_limit: 512m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       retries: 10
+
   nats:
     image: nats:2.11-alpine
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "${NATS_PORT:-4222}:4222"
+      - "${NATS_MONITOR_PORT:-8222}:8222"
     volumes:
       - natsdata:/data
     restart: unless-stopped
+    mem_limit: 256m
     command: ["-js", "-sd", "/data", "-m", "8222"]
     healthcheck:
       test: wget http://localhost:8222/healthz?js-enabled-only=true -q -S -O -
       interval: 10s
       retries: 10
+
+  trace-relay:
+    image: checkout-saga:local
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
+    mem_limit: 128m
+    command: ["node", "apps/trace-relay/dist/main.js"]
+    profiles: [app]
+
+  order:
+    <<: *app
+    command: ["node", "apps/order/dist/main.js"]
+    environment: { <<: *env, PORT: "3001" }
+    profiles: [app]
+
+  inventory:
+    <<: *app
+    command: ["node", "apps/inventory/dist/main.js"]
+    environment: { <<: *env, PORT: "3002" }
+    profiles: [app]
+
+  payment:
+    <<: *app
+    command: ["node", "apps/payment/dist/main.js"]
+    environment: { <<: *env, PORT: "3003", PAYMENT_RANDOM_FAILURE_RATE: "${PAYMENT_RANDOM_FAILURE_RATE:-0}" }
+    profiles: [app]
+
+  notify:
+    <<: *app
+    command: ["node", "apps/notify/dist/main.js"]
+    environment: { <<: *env, PORT: "3004" }
+    profiles: [app]
+
+  gateway:
+    <<: *app
+    command: ["node", "apps/gateway/dist/main.js"]
+    depends_on: [order, inventory, notify, trace-relay]
+    environment:
+      <<: *env
+      PORT: "8080"
+      ORDER_URL: http://order:3001
+      INVENTORY_URL: http://inventory:3002
+      NOTIFY_URL: http://notify:3004
+      TRACE_RELAY_URL: http://trace-relay:4318
+      WEB_DIST: /repo/apps/web/dist
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    healthcheck:
+      test: wget -q -O - http://127.0.0.1:8080/healthz
+      interval: 10s
+      retries: 5
+    profiles: [app]
 
 volumes:
   dbdata:
