@@ -6,6 +6,9 @@ import type {
   TraceSpan,
 } from "@checkout/contracts";
 
+/** "slow": every service holds each message ~1 s so a person can follow it. */
+export type Pace = "realtime" | "slow";
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -28,17 +31,62 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
+const randomHex = (bytes: number) =>
+  Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
+
+/**
+ * This browser's failure-lab id. Faults the visitor switches on apply only to
+ * orders carrying it (as W3C baggage), so nobody breaks the demo for others.
+ */
+export const labId: string = (() => {
+  try {
+    const saved = localStorage.getItem("checkout-saga:lab");
+    if (saved) return saved;
+    const fresh = crypto.randomUUID();
+    localStorage.setItem("checkout-saga:lab", fresh);
+    return fresh;
+  } catch {
+    return crypto.randomUUID();
+  }
+})();
+
+export interface LabSnapshot {
+  downUntil: string | null;
+  crashArmed: boolean;
+}
+export type LabState = Record<"inventory" | "payment", LabSnapshot>;
+export type LabService = keyof LabState;
+
+/** A fresh W3C trace id (16 random bytes as hex). */
+export const newTraceId = () => randomHex(16);
+
 export const api = {
+  lab: () => request<LabState>("/lab", { headers: { "x-demo-lab": labId } }),
+  setLab: (service: LabService, fault: "down" | "crash", on: boolean) =>
+    request<LabSnapshot>("/lab", {
+      method: "PUT",
+      body: JSON.stringify({ service, fault, on }),
+      headers: { "x-demo-lab": labId },
+    }),
   products: () => request<ProductView[]>("/products"),
   restock: () => request<ProductView[]>("/products/restock", { method: "POST" }),
   orders: () => request<OrderView[]>("/orders?limit=25"),
   order: (id: string) => request<OrderView>(`/orders/${id}`),
   notifications: () => request<NotificationView[]>("/notifications?limit=12"),
   trace: (traceId: string) => request<TraceSpan[]>(`/traces/${traceId}`),
-  placeOrder: (items: Item[], idempotencyKey: string) =>
+  /**
+   * The browser starts the trace itself (W3C traceparent), so it knows the
+   * order's trace id before any message of the saga reaches the page.
+   */
+  placeOrder: (items: Item[], idempotencyKey: string, pace: Pace, traceId: string) =>
     request<OrderView>("/orders", {
       method: "POST",
       body: JSON.stringify({ items }),
-      headers: { "idempotency-key": idempotencyKey },
+      headers: {
+        "idempotency-key": idempotencyKey,
+        "x-demo-pace": pace,
+        "x-demo-lab": labId,
+        traceparent: `00-${traceId}-${randomHex(8)}-01`,
+      },
     }),
 };

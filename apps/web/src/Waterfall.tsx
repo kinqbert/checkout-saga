@@ -17,32 +17,25 @@ export function Waterfall({ spans }: { spans: TraceSpan[] }) {
   };
   const sorted = [...spans].sort((a, b) => a.startMs - b.startMs || depth(a) - depth(b));
   const t0 = sorted[0]!.startMs;
-  const end = Math.max(...spans.map((s) => s.startMs + s.durationMs));
-  const total = Math.max(1, end - t0);
+  const total = Math.max(1, Math.max(...spans.map((s) => s.startMs + s.durationMs)) - t0);
 
   return (
-    <div className="waterfall" role="table" aria-label="trace spans">
-      <div className="wf-head">
-        <span>{spans.length} spans across {new Set(spans.map((s) => s.service)).size} services</span>
-        <span>{ms(total)} end to end</span>
-      </div>
-      {sorted.map((s) => {
-        const left = ((s.startMs - t0) / total) * 100;
-        const width = Math.max(0.6, (s.durationMs / total) * 100);
-        return (
-          <div key={s.spanId} className="wf-row" role="row" title={`${s.service} · ${s.name} · ${ms(s.durationMs)}`}>
-            <div className="wf-name" style={{ paddingLeft: `${Math.min(depth(s), 8) * 10}px` }}>
-              <i className={`svc-chip svc-${s.service}`} />
-              <span className="wf-svc">{s.service}</span>
-              <span className="wf-op">{s.name}</span>
-            </div>
-            <div className="wf-track">
-              <div className={`wf-bar svc-bg-${s.service} ${s.error ? "is-error" : ""}`} style={{ left: `${left}%`, width: `${width}%` }} />
-            </div>
-            <div className="wf-dur">{ms(s.durationMs)}</div>
-          </div>
-        );
-      })}
-    </div>
+    <ol className="wf" aria-label="Spans in this trace">
+      {sorted.map((s) => (
+        <li key={s.spanId} className="wf-row" style={{ paddingLeft: `${Math.min(depth(s), 8) * 6}px` }}>
+          <span className="wf-name">
+            <span className={`wf-svc ${s.service === "order" ? "is-order" : ""}`}>{s.service}</span>
+            <span className="wf-op">{s.name.replace(/checkout\.(cmd|evt)\./, "")}</span>
+          </span>
+          <span className="wf-track">
+            <span
+              className={`wf-bar ${s.service === "order" ? "is-order" : ""} ${s.error ? "is-error" : ""}`}
+              style={{ left: `${((s.startMs - t0) / total) * 100}%`, width: `${Math.max(0.8, (s.durationMs / total) * 100)}%` }}
+            />
+          </span>
+          <span className="wf-dur num">{ms(s.durationMs)}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
