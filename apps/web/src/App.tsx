@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { api, labActive, type Pace } from "./api";
 import { Dock } from "./Dock";
-import { Graph, useNarrow, type Insets } from "./Graph";
+import { Graph, type Insets } from "./map/Graph";
+import { PHONE, useMedia } from "./map/useMedia";
 import { HowItWorks } from "./HowItWorks";
 import { Book, GitHub } from "./icons";
 import { useMyOrders } from "./myOrders";
@@ -14,14 +15,13 @@ const REPO = "https://github.com/kinqbert/checkout-saga";
 
 export function App() {
   const products = usePoll(api.products, 5000);
-  // Failure lab state: polled quickly while something is broken, slowly otherwise.
+  // polled quickly while something is broken.
   const [labFast, setLabFast] = useState(false);
   const lab = usePoll(api.lab, labFast ? 1000 : 6000);
   const labOn = labActive(lab.data);
   if (labOn !== labFast) setLabFast(labOn);
   const mine = useMyOrders();
   const [selected, setSelected] = useState<string>();
-  // "Your orders" is closed by default and only opens when asked.
   const [panelOpen, setPanelOpen] = useState(false);
   const [howOpen, setHowOpen] = useState(false);
   const [pace, setPace] = useState<Pace>(() => {
@@ -36,24 +36,25 @@ export function App() {
     try {
       localStorage.setItem("checkout-saga:pace", p);
     } catch {
-      /* not remembered; fine */
+      // not remembered; fine
     }
   };
   const status = useStreamStatus();
-  const narrow = useNarrow();
+  const narrow = useMedia(PHONE);
 
   const current = mine.list.find((o) => o.id === selected);
-  // Your latest order while its saga runs: the Order card counts down its deadline.
   const latest = mine.list[0];
   const running = latest && latest.state !== "CONFIRMED" && latest.state !== "CANCELLED" ? latest : undefined;
   useFavicon(mine.list[0]?.state);
   const showPanel = panelOpen && !!current;
 
-  // Room the map leaves for the floating UI. The order panel's space is always
-  // reserved, so opening or closing it never moves the graph.
+  // room for the floating UI; on desktop the map slides left while the order panel is open.
   const insets = useMemo<Insets>(
-    () => (narrow ? { top: 172, right: 18, bottom: 372, left: 18 } : { top: 170, right: 430, bottom: 130, left: 60 }),
-    [narrow],
+    () =>
+      narrow
+        ? { top: 172, right: 18, bottom: 372, left: 18 }
+        : { top: 170, right: showPanel ? 430 : 60, bottom: 130, left: 60 },
+    [narrow, showPanel],
   );
 
   return (

@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
-import { ArrowUpRight, Close } from "./icons";
+import { Close } from "./icons";
 
-const REPO = "https://github.com/kinqbert/checkout-saga";
 
 export function HowItWorks({ onClose }: { onClose: () => void }) {
   const ref = useRef<HTMLElement>(null);
@@ -64,14 +63,6 @@ export function HowItWorks({ onClose }: { onClose: () => void }) {
         </a>
         .
       </p>
-      <div className="drawer-links">
-        <a className="btn" href={REPO} target="_blank" rel="noreferrer">
-          Read the code <ArrowUpRight />
-        </a>
-        <a className="btn" href={`${REPO}/tree/master/docs/adr`} target="_blank" rel="noreferrer">
-          Design decisions <ArrowUpRight />
-        </a>
-      </div>
     </aside>
   );
 }
