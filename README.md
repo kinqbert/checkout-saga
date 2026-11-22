@@ -56,7 +56,7 @@ The state machine is a pure function, `transition(saga, event) → { saga, messa
 | **gateway** | nothing | Public HTTP API and BFF, validation, per-IP rate limit, serves the web build, proxies the trace stream |
 | **order** | `orders` schema: orders, transitions, catalog replica | Saga orchestrator. Prices orders from its local catalog copy |
 | **inventory** | `inventory` schema: products, stock, reservations | Reserves and releases stock all-or-nothing. Owns and publishes the catalog. Regular products are topped up by the "supplier" when they run short; only the limited sneakers can really sell out |
-| **payment** | `payments` schema | Fake card provider with a $500 limit (the decline path). Payment is the pivot step, so it never needs a refund |
+| **payment** | `payments` schema | Fake card provider with a $500 limit (the decline path). Payment is the pivot step; it refunds only a charge that landed after the order timed out |
 | **notify** | `notify` schema | Sends "e-mails" on confirmed or cancelled orders. It is **outside** the saga: a failed e-mail can't cancel a paid order |
 | **trace-relay** | in-memory ring buffer | Receives OTLP/HTTP JSON spans and fans them out to browsers over SSE |
 
@@ -89,11 +89,23 @@ The UI's **Failure lab** lets a visitor break things on purpose and watch the sy
 
 | Experiment | What happens | What it proves |
 |---|---|---|
-| Payment outage | Payment refuses the visitor's messages (`nak`). JetStream redelivers every second; orders wait at *Awaiting payment*, then all finish when it's back | Durable messaging: nothing is lost while a service is down |
-| Inventory outage | The same, one step earlier in the saga | The saga waits instead of failing |
+| Payment outage | Payment refuses the visitor's messages (`nak`). JetStream redelivers every second; orders wait at *Awaiting payment* and finish when it's back. Past the 20 s deadline the saga times out, releases the stock and cancels | Durable messaging, and a saga that gives up cleanly instead of waiting forever |
+| Inventory outage | The same, one step earlier in the saga | The saga waits, then times out with nothing to undo |
+| Slow card provider | Payment charges the card, but the answer only comes 3 s after the order's deadline. The order has already timed out, so the late charge is refunded | Compensating a step that succeeded too late |
 | Crash before ack | Inventory commits its work, then "crashes" before acknowledging. The message is delivered again and the inbox drops it (`duplicate ignored`); stock moves once | Exactly-once effects on top of at-least-once delivery |
+| Kill Order mid-saga | Order moves the visitor's saga on, acks, then the process really exits (`process.exit`). Docker (or `pnpm dev`'s runner) restarts it; the outbox relay publishes what was committed, the reply waiting in JetStream is consumed, and the saga finishes. A command published just before the crash is published again after it, and JetStream drops the copy by its message id (the span says so) | The orchestrator keeps no state in memory: everything it needs is in Postgres and JetStream |
 
-Faults are **per visitor**. The browser sends a lab id, the gateway puts it in the order's W3C baggage (`demo.lab`), and Inventory and Payment keep the fault switches for that id only. Other visitors' orders are untouched, and outages switch themselves off after 60 s. Consumers never give up on a message unless it is poison (`max_deliver` unlimited), so a long outage can't silently drop work. The end-to-end check (`pnpm e2e`) covers both behaviours.
+Faults are **per visitor**. The browser sends a lab id, the gateway puts it in the order's W3C baggage (`demo.lab`), and each service keeps the fault switches for that id only. Other visitors' orders are untouched (killing Order is the exception: everyone's sagas pause for the few seconds it takes to restart), and faults switch themselves off after 60 s. Consumers never give up on a message unless it is poison (`max_deliver` unlimited), so a long outage can't silently drop work. The end-to-end check (`pnpm e2e`) covers both behaviours.
+
+## Timeouts
+
+A saga that waits forever is a bug, so every step that waits on another service has a deadline (`SAGA_STEP_TIMEOUT_MS`, 20 s by default):
+
+- The deadline is stored on the order row (`deadline_at`), not in a timer, so it survives a restart. A sweeper in the order service picks up overdue sagas every second (`FOR UPDATE SKIP LOCKED`, so several instances can sweep) and feeds them a `saga.timeout` event through the same pure state machine.
+- **Waiting for stock** times out to *Cancelled*: nothing was reserved, nothing to undo. **Waiting for payment** times out to *Releasing stock*, then *Cancelled*.
+- The command carries the same deadline, and Inventory and Payment refuse work that arrives after it. So a queue that drains after an outage doesn't reserve stock or charge cards for orders that already gave up.
+- A reply can still race the deadline: the work happened just in time, but the answer arrived late. The saga keeps its state and **compensates the late success** instead: stock reserved too late is released, a card charged too late is refunded (`checkout.cmd.payment.refund`). This is the one case where payment, otherwise the pivot step, needs a refund. The order stays *Cancelled*; its timeline records the late reply and the refund as notes.
+- The timeout continues the saga's own trace (the order row keeps the last step's `traceparent` and baggage), so the waterfall shows where it gave up.
 
 ## Load
 

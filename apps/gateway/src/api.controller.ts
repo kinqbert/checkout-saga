@@ -31,11 +31,21 @@ import { Upstream, upstreams } from "./upstream.js";
 const ORDER_RATE = Number(process.env.ORDER_RATE_PER_SECOND ?? 100);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const LabChange = z.object({
-  service: z.enum(["inventory", "payment"]),
-  fault: z.enum(["down", "crash"]),
-  on: z.boolean(),
-});
+/** Which experiments exist: the service a fault breaks, and how. */
+const LAB_FAULTS = {
+  inventory: ["down", "crash"],
+  payment: ["down", "slow"],
+  order: ["kill"],
+} as const;
+const LabChange = z
+  .object({
+    service: z.enum(["inventory", "payment", "order"]),
+    fault: z.enum(["down", "slow", "crash", "kill"]),
+    on: z.boolean(),
+  })
+  .refine((c) => (LAB_FAULTS[c.service] as readonly string[]).includes(c.fault), {
+    message: "that fault is not an experiment for that service",
+  });
 
 const limitParam = (v?: string) => String(Math.min(Math.max(Number(v) || 20, 1), 100));
 
@@ -106,15 +116,16 @@ export class ApiController implements BeforeApplicationShutdown {
     return order;
   }
 
-  /** Failure lab: this visitor's fault switches across Inventory and Payment. */
+  /** Failure lab: this visitor's fault switches across Inventory, Payment and Order. */
   @Get("lab")
   async lab(@Headers("x-demo-lab") lab: string | undefined): Promise<unknown> {
     const id = this.labId(lab);
-    const [inventory, payment] = await Promise.all([
+    const [inventory, payment, order] = await Promise.all([
       this.upstream.call("inventory", `/lab/${id}`),
       this.upstream.call("payment", `/lab/${id}`),
+      this.upstream.call("order", `/lab/${id}`),
     ]);
-    return { inventory: inventory.body, payment: payment.body };
+    return { inventory: inventory.body, payment: payment.body, order: order.body };
   }
 
   @Put("lab")

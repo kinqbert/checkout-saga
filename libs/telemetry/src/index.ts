@@ -51,6 +51,11 @@ export function startTelemetry(serviceName: string): { shutdown(): Promise<void>
 
 export const tracer = () => trace.getTracer("checkout-saga");
 
+/** Sends every finished span now; call before the process exits on purpose. */
+export async function flushTelemetry(): Promise<void> {
+  await provider?.forceFlush().catch(() => undefined);
+}
+
 /** Runs `fn` inside a new active span, recording errors and always ending it. */
 export async function withSpan<T>(
   name: string,

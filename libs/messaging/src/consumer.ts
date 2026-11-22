@@ -1,5 +1,5 @@
 import { TraceAttr } from "@checkout/contracts";
-import { baggageValue, contextFromHeaders, LAB_KEY, slowModeHold, SpanKind, withSpan } from "@checkout/telemetry";
+import { baggageValue, contextFromHeaders, flushTelemetry, LAB_KEY, slowModeHold, SpanKind, withSpan } from "@checkout/telemetry";
 import type { LabFaults } from "./lab.js";
 import {
   AckPolicy,
@@ -138,12 +138,25 @@ export async function startConsumer(opts: ConsumerOptions): Promise<{ stop(): Pr
             span.addEvent("crashed before ack (failure lab)");
             return "redeliver" as const;
           }
+          // Failure lab: a real crash. The step is committed and acked, then
+          // the process exits; its supervisor restarts it, and the saga goes
+          // on from what is stored (order row, outbox, unacked replies).
+          if (lab && opts.faults?.takeKill(lab)) {
+            span.setAttribute("demo.lab.killed", true);
+            span.addEvent("process killed after this step (failure lab)");
+            return "kill" as const;
+          }
           return "ack" as const;
         },
       );
       if (outcome === "retry") msg.nak(1000);
       else if (outcome === "redeliver") msg.nak(200);
-      else msg.ack();
+      else if (outcome === "kill") {
+        await msg.ackAck().catch(() => false);
+        log(`failure lab: exiting the process after ${msg.subject}`);
+        await flushTelemetry();
+        globalThis.process.exit(1); // `process` is shadowed by process(msg) below
+      } else msg.ack();
     } catch (err) {
       if (err instanceof PoisonMessageError) {
         log(`terminating poison message on ${msg.subject}: ${err.message}`);

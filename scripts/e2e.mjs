@@ -22,7 +22,7 @@ async function settle(id, timeoutMs = 15_000) {
   const until = Date.now() + timeoutMs;
   while (Date.now() < until) {
     const { body } = await api(`/orders/${id}`);
-    if (body.state === "CONFIRMED" || body.state === "CANCELLED") return body;
+    if (body?.state === "CONFIRMED" || body?.state === "CANCELLED") return body;
     await sleep(150);
   }
   throw new Error(`order ${id} did not settle`);
@@ -159,6 +159,57 @@ await step("failure lab: crash before ack is redelivered and the inbox applies i
   }
   assert.ok(spans.some((s) => s.attributes["demo.lab.crashed"]), "first delivery crashed");
   assert.ok(spans.some((s) => s.attributes["checkout.inbox.duplicate"]), "redelivery ignored by inbox");
+});
+
+// ── Timeouts (take ~25 s each: the saga waits SAGA_STEP_TIMEOUT_MS, 20 s by default) ──
+const spansOf = async (traceId, until, tries = 40) => {
+  let spans = [];
+  for (let i = 0; i < tries && !until(spans); i++) {
+    await sleep(250);
+    spans = (await api(`/traces/${traceId}`)).body ?? [];
+  }
+  return spans;
+};
+
+await step("timeout: payment down past the deadline releases the stock and cancels", async () => {
+  await api("/products/restock", { method: "POST" });
+  const before = await stockOf("hoodie");
+  await lab({ service: "payment", fault: "down", on: true });
+  try {
+    const order = await settle((await labOrder([{ sku: "hoodie", quantity: 1 }])).body.id, 40_000);
+    assert.equal(order.state, "CANCELLED");
+    assert.equal(order.cancelReason, "payment did not answer in time");
+    assert.ok(order.transitions.some((t) => t.cause === "saga.timeout"), "timeline shows the timeout");
+    assert.equal(await stockOf("hoodie"), before, "stock given back");
+  } finally {
+    await lab({ service: "payment", fault: "down", on: false });
+  }
+});
+
+await step("timeout: a card charged after the deadline is refunded", async () => {
+  await lab({ service: "payment", fault: "slow", on: true });
+  try {
+    const order = await settle((await labOrder([{ sku: "mug", quantity: 1 }])).body.id, 40_000);
+    assert.equal(order.state, "CANCELLED");
+    const spans = await spansOf(order.traceId, (s) => s.some((x) => x.attributes["messaging.message.type"] === "checkout.evt.payment.refunded"));
+    assert.ok(spans.some((x) => x.attributes["messaging.message.type"] === "checkout.cmd.payment.refund"), "order asked for a refund");
+    assert.ok(spans.some((x) => x.attributes["messaging.message.type"] === "checkout.evt.payment.refunded"), "payment refunded");
+    const { body: final } = await api(`/orders/${order.id}`);
+    const notes = final.transitions.filter((t) => t.from === t.to).map((t) => t.cause);
+    assert.deepEqual(notes, ["checkout.evt.payment.captured", "checkout.evt.payment.refunded"], "timeline notes the late payment and its refund");
+    assert.equal(final.state, "CANCELLED", "a late payment never revives a cancelled order");
+  } finally {
+    await lab({ service: "payment", fault: "slow", on: false });
+  }
+});
+
+// ── Kill Order mid-saga (needs a supervisor: Docker's restart policy or pnpm dev) ──
+await step("kill: Order exits mid-saga, restarts, and finishes the saga from the database", async () => {
+  await lab({ service: "order", fault: "kill", on: true });
+  const order = await settle((await labOrder([{ sku: "mug", quantity: 1 }])).body.id, 40_000);
+  assert.equal(order.state, "CONFIRMED");
+  const spans = await spansOf(order.traceId, (s) => s.some((x) => x.attributes["demo.lab.killed"]));
+  assert.ok(spans.some((x) => x.attributes["demo.lab.killed"]), "Order was killed during this saga");
 });
 
 await api("/products/restock", { method: "POST" });

@@ -106,13 +106,19 @@ export class OutboxRelay {
               ...(env.orderId ? { [TraceAttr.orderId]: env.orderId } : {}),
             },
           },
-          async () => {
+          async (span) => {
             const h = headers();
             for (const [k, v] of Object.entries(currentTraceHeaders())) h.set(k, v);
-            await js.publish(row.subject, JSON.stringify(row.envelope), {
+            const ack = await js.publish(row.subject, JSON.stringify(row.envelope), {
               msgID: row.id,
               headers: h,
             });
+            // A row published before a crash, then again after the restart:
+            // JetStream recognises the id and keeps only the first copy.
+            if (ack.duplicate) {
+              span.setAttribute("messaging.nats.duplicate", true);
+              span.addEvent("duplicate dropped by JetStream (same message id)");
+            }
           },
         );
       }
