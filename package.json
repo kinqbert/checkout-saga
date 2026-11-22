@@ -11,7 +11,8 @@
     "docker-up": "docker compose -f infra/docker-compose.yaml --profile app up -d --build --wait",
     "docker-down": "docker compose -f infra/docker-compose.yaml --profile app down",
     "docker-reset": "docker compose -f infra/docker-compose.yaml --profile app down -v",
-    "docker-logs": "docker compose -f infra/docker-compose.yaml --profile app logs -f"
+    "docker-logs": "docker compose -f infra/docker-compose.yaml --profile app logs -f",
+    "load": "node scripts/load.mjs"
   },
   "engines": {
     "node": ">=24"
