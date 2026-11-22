@@ -79,6 +79,37 @@ Shared code lives in [`libs/`](libs): `contracts` (zod schemas for every message
 
 When a service writes an outbox row it also stores the current W3C `traceparent` in `outbox.headers`. The relay restores that context, opens a `PRODUCER` span and puts the header on the NATS message. The consumer opens a `CONSUMER` span whose parent is that producer span. So the HTTP request, five services and the async gaps between them form one trace. The gateway starts traces only for writes (`POST`/`PATCH`), and internal services only continue traces they receive. That keeps the UI's polling out of the picture.
 
+## Slow mode
+
+The UI has a **Real time / Slow** toggle. In slow mode, every service holds each message for one second before handling it, so a person can follow the order hop by hop. The hold is real, not an animation: the gateway puts `demo.pace=slow` into the order's [W3C baggage](https://www.w3.org/TR/baggage/). Baggage travels next to `traceparent` through HTTP, the outbox rows and the NATS headers, so every consumer sees it and pauses in a span named `demo: slow-mode hold`, which you can see in the trace. Consumers handle up to 16 messages at once, so one visitor's slow order never holds up anyone else's. The gateway drops any `baggage` header a client sends.
+
+## Failure lab
+
+The UI's **Failure lab** lets a visitor break things on purpose and watch the system recover:
+
+| Experiment | What happens | What it proves |
+|---|---|---|
+| Payment outage | Payment refuses the visitor's messages (`nak`). JetStream redelivers every second; orders wait at *Awaiting payment*, then all finish when it's back | Durable messaging: nothing is lost while a service is down |
+| Inventory outage | The same, one step earlier in the saga | The saga waits instead of failing |
+| Crash before ack | Inventory commits its work, then "crashes" before acknowledging. The message is delivered again and the inbox drops it (`duplicate ignored`); stock moves once | Exactly-once effects on top of at-least-once delivery |
+
+Faults are **per visitor**. The browser sends a lab id, the gateway puts it in the order's W3C baggage (`demo.lab`), and Inventory and Payment keep the fault switches for that id only. Other visitors' orders are untouched, and outages switch themselves off after 60 s. Consumers never give up on a message unless it is poison (`max_deliver` unlimited), so a long outage can't silently drop work. The end-to-end check (`pnpm e2e`) covers both behaviours.
+
+## Load
+
+`pnpm load` (`node scripts/load.mjs --rate 100 --seconds 30`) places orders at a fixed rate (open loop) and follows every saga to its end. Measured on one laptop with the whole Docker stack, a mix of 75% accepted and 25% declined cards:
+
+| | |
+|---|---|
+| Requests | 3000 at 100/s, all `201` |
+| Sagas | 3000/3000 finished, **~99 sagas/s** sustained |
+| Saga time | p50 ~400 ms, p95 ~0.9–1.3 s (each saga includes a 150–500 ms fake card charge) |
+| HTTP latency | p50 ~5–10 ms, p95 ~160 ms |
+
+What made it work: payment is waiting on a slow provider, so consumers handle up to 64 messages at once. With 16, throughput was capped at ~48 sagas/s (16 slots ÷ ~0.33 s per charge).
+
+The gateway limits each visitor (IP) to **100 orders/s** with a token bucket. Past that it answers `429` with `Retry-After` and `RateLimit-*` headers. At 150/s for 5 s, 598 of 750 orders got through, which is the 100 burst plus 100/s.
+
 ## Run it
 
 Requirements: Docker, Node 24, pnpm 11.

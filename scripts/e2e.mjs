@@ -128,5 +128,38 @@ await step("one trace spans every service of a saga", async () => {
   assert.deepEqual([...services].sort(), ["gateway", "inventory", "notify", "order", "payment"]);
 });
 
+// ── Failure lab (per-visitor faults via W3C baggage) ──────────────────
+const LAB = randomUUID();
+const lab = (body) => api("/lab", { method: "PUT", body, headers: { "x-demo-lab": LAB } });
+const labOrder = (items) =>
+  api("/orders", { method: "POST", body: { items }, headers: { "x-demo-lab": LAB, "idempotency-key": randomUUID() } });
+
+await step("failure lab: payment outage queues the saga, recovery completes it, other visitors unaffected", async () => {
+  await lab({ service: "payment", fault: "down", on: true });
+  const mine = (await labOrder([{ sku: "mug", quantity: 1 }])).body;
+  const theirs = (await placeOrder([{ sku: "mug", quantity: 1 }])).body;
+  assert.equal((await settle(theirs.id)).state, "CONFIRMED");
+  await sleep(2500);
+  assert.equal((await api(`/orders/${mine.id}`)).body.state, "AWAITING_PAYMENT");
+  await lab({ service: "payment", fault: "down", on: false });
+  assert.equal((await settle(mine.id)).state, "CONFIRMED");
+});
+
+await step("failure lab: crash before ack is redelivered and the inbox applies it once", async () => {
+  await api("/products/restock", { method: "POST" });
+  const before = await stockOf("hoodie");
+  await lab({ service: "inventory", fault: "crash", on: true });
+  const order = await settle((await labOrder([{ sku: "hoodie", quantity: 2 }])).body.id);
+  assert.equal(order.state, "CONFIRMED");
+  assert.equal(await stockOf("hoodie"), before - 2);
+  let spans = [];
+  for (let i = 0; i < 20 && !spans.some((s) => s.attributes["checkout.inbox.duplicate"]); i++) {
+    await sleep(250);
+    spans = (await api(`/traces/${order.traceId}`)).body;
+  }
+  assert.ok(spans.some((s) => s.attributes["demo.lab.crashed"]), "first delivery crashed");
+  assert.ok(spans.some((s) => s.attributes["checkout.inbox.duplicate"]), "redelivery ignored by inbox");
+});
+
 await api("/products/restock", { method: "POST" });
 console.log("\nall good ✔");

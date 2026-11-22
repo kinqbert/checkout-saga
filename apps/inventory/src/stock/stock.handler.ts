@@ -7,6 +7,7 @@ import {
 } from "@checkout/contracts";
 import {
   claimMessage,
+  LabFaults,
   enqueue,
   outboxRow,
   OutboxRelay,
@@ -43,6 +44,7 @@ export class StockHandler implements OnApplicationBootstrap, BeforeApplicationSh
     @Inject(DB) private readonly database: Database,
     @Inject(BUS) private readonly bus: Bus,
     private readonly relay: OutboxRelay,
+    private readonly faults: LabFaults,
   ) {}
 
   async onApplicationBootstrap() {
@@ -52,6 +54,7 @@ export class StockHandler implements OnApplicationBootstrap, BeforeApplicationSh
       durable: CONSUMER,
       filterSubjects: ["checkout.cmd.inventory.>"],
       handle: (data) => this.handle(data),
+      faults: this.faults,
       log: (m, e) => this.log.warn(`${m} ${e ?? ""}`),
     });
   }

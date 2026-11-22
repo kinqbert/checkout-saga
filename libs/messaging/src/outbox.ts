@@ -1,5 +1,5 @@
 import type { BaseEnvelope, Envelope } from "@checkout/contracts";
-import { currentTraceHeaders } from "@checkout/telemetry";
+import { currentTraceHeaders, trace } from "@checkout/telemetry";
 import { randomUUID } from "node:crypto";
 import type { NodePgQueryResultHKT } from "drizzle-orm/node-postgres";
 import type { PgAsyncDatabase } from "drizzle-orm/pg-core";
@@ -60,5 +60,10 @@ export async function claimMessage(
     .values({ messageId, consumer })
     .onConflictDoNothing()
     .returning({ id: table.messageId });
+  if (inserted.length === 0) {
+    // Seen before: the caller skips its side effects. Say so in the trace.
+    trace.getActiveSpan()?.setAttribute("checkout.inbox.duplicate", true);
+    trace.getActiveSpan()?.addEvent("duplicate ignored by the inbox");
+  }
   return inserted.length > 0;
 }

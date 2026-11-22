@@ -88,12 +88,13 @@ services:
   gateway:
     <<: *app
     command: ["node", "apps/gateway/dist/main.js"]
-    depends_on: [order, inventory, notify, trace-relay]
+    depends_on: [order, inventory, payment, notify, trace-relay]
     environment:
       <<: *env
       PORT: "8080"
       ORDER_URL: http://order:3001
       INVENTORY_URL: http://inventory:3002
+      PAYMENT_URL: http://payment:3003
       NOTIFY_URL: http://notify:3004
       TRACE_RELAY_URL: http://trace-relay:4318
       WEB_DIST: /repo/apps/web/dist

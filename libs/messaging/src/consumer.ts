@@ -1,5 +1,6 @@
 import { TraceAttr } from "@checkout/contracts";
-import { contextFromHeaders, SpanKind, withSpan } from "@checkout/telemetry";
+import { baggageValue, contextFromHeaders, LAB_KEY, slowModeHold, SpanKind, withSpan } from "@checkout/telemetry";
+import type { LabFaults } from "./lab.js";
 import {
   AckPolicy,
   DeliverPolicy,
@@ -27,6 +28,14 @@ export interface ConsumerOptions {
   filterSubjects: string[];
   handle: (data: unknown, ctx: MessageContext) => Promise<void>;
   maxDeliver?: number;
+  /** Failure-lab switches owned by this service (see lab.ts). */
+  faults?: LabFaults;
+  /**
+   * Messages handled at once (default 64). Work is mostly waiting (a payment
+   * provider call, a slow-mode hold), so this sets throughput: 64 slots at
+   * ~325 ms per fake charge ≈ 200 payments/s.
+   */
+  concurrency?: number;
   log?: (msg: string, err?: unknown) => void;
 }
 
@@ -49,7 +58,9 @@ export async function startConsumer(opts: ConsumerOptions): Promise<{ stop(): Pr
     ack_policy: AckPolicy.Explicit,
     deliver_policy: DeliverPolicy.All,
     filter_subjects: opts.filterSubjects,
-    max_deliver: opts.maxDeliver ?? 20,
+    // Unlimited: a message is only given up on when it is poison (term()), so
+    // a long outage (real or failure-lab) can never silently drop work.
+    max_deliver: opts.maxDeliver ?? -1,
     ack_wait: nanos(30_000),
   };
   try {
@@ -64,12 +75,18 @@ export async function startConsumer(opts: ConsumerOptions): Promise<{ stop(): Pr
   }
 
   const consumer = await bus.js.consumers.get(stream, durable);
-  const messages: ConsumerMessages = await consumer.consume({ max_messages: 64 });
+  const limit = opts.concurrency ?? 64;
+  // Pull ahead of the work so the in-flight slots never sit idle.
+  const messages: ConsumerMessages = await consumer.consume({ max_messages: limit * 2 });
 
+  const inFlight = new Set<Promise<void>>();
   const loop = (async () => {
     for await (const msg of messages) {
-      await process(msg);
+      const p = process(msg).finally(() => inFlight.delete(p));
+      inFlight.add(p);
+      if (inFlight.size >= limit) await Promise.race(inFlight);
     }
+    await Promise.all(inFlight);
   })();
 
   async function process(msg: JsMsg): Promise<void> {
@@ -77,7 +94,7 @@ export async function startConsumer(opts: ConsumerOptions): Promise<{ stop(): Pr
     for (const key of msg.headers?.keys() ?? []) carrier[key.toLowerCase()] = msg.headers!.get(key);
 
     try {
-      await withSpan(
+      const outcome = await withSpan(
         `process ${msg.subject}`,
         {
           kind: SpanKind.CONSUMER,
@@ -100,10 +117,33 @@ export async function startConsumer(opts: ConsumerOptions): Promise<{ stop(): Pr
           if (env.id) span.setAttribute(TraceAttr.messageId, env.id);
           if (env.orderId) span.setAttribute(TraceAttr.orderId, env.orderId);
 
+          // Failure lab: this service is "down" for the visitor who sent it.
+          // Refuse it; JetStream keeps it and redelivers in a second.
+          const lab = baggageValue(LAB_KEY);
+          if (lab && opts.faults?.isDown(lab)) {
+            span.setAttribute("demo.lab.refused", true);
+            span.addEvent("refused: service is down (failure lab)");
+            return "retry" as const;
+          }
+
+          // Slow mode (W3C baggage set by the gateway): hold the message so a
+          // person can follow it. The hold is its own span, so the trace says so.
+          if (msg.info.deliveryCount === 1) await slowModeHold();
           await opts.handle(data, { subject: msg.subject, deliveryCount: msg.info.deliveryCount });
+
+          // Failure lab: the work is committed, then the process "crashes"
+          // before acking. JetStream redelivers; the inbox must catch it.
+          if (lab && opts.faults?.takeCrash(lab)) {
+            span.setAttribute("demo.lab.crashed", true);
+            span.addEvent("crashed before ack (failure lab)");
+            return "redeliver" as const;
+          }
+          return "ack" as const;
         },
       );
-      msg.ack();
+      if (outcome === "retry") msg.nak(1000);
+      else if (outcome === "redeliver") msg.nak(200);
+      else msg.ack();
     } catch (err) {
       if (err instanceof PoisonMessageError) {
         log(`terminating poison message on ${msg.subject}: ${err.message}`);

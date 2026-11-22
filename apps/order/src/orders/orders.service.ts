@@ -6,7 +6,7 @@ import {
   sagaEnvelope,
   type Database,
 } from "@checkout/messaging";
-import { currentTraceId, withSpan } from "@checkout/telemetry";
+import { currentTraceId, slowModeHold, withSpan } from "@checkout/telemetry";
 import { Inject, Injectable } from "@nestjs/common";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -66,6 +66,10 @@ export class OrdersService {
       const existing = await this.findByKey(idempotencyKey);
       if (existing) return { order: existing, created: false };
     }
+
+    // Slow mode: the HTTP hop from the gateway takes a visible second too,
+    // so the first command is published after it, not alongside it.
+    await slowModeHold();
 
     const items = mergeItems(requested);
     const created = await withSpan("order.place", {}, (span) =>

@@ -4,6 +4,7 @@ import { HttpException, Injectable, ServiceUnavailableException } from "@nestjs/
 export const upstreams = {
   order: process.env.ORDER_URL ?? "http://localhost:3001",
   inventory: process.env.INVENTORY_URL ?? "http://localhost:3002",
+  payment: process.env.PAYMENT_URL ?? "http://localhost:3003",
   notify: process.env.NOTIFY_URL ?? "http://localhost:3004",
   traces: process.env.TRACE_RELAY_URL ?? "http://localhost:4318",
 };

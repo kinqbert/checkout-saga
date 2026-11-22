@@ -9,7 +9,7 @@ import {
   type Span,
 } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
-import { W3CTraceContextPropagator } from "@opentelemetry/core";
+import { CompositePropagator, W3CBaggagePropagator, W3CTraceContextPropagator } from "@opentelemetry/core";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { BatchSpanProcessor, TracerProvider } from "@opentelemetry/sdk-trace";
@@ -40,7 +40,11 @@ export function startTelemetry(serviceName: string): { shutdown(): Promise<void>
   });
 
   context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
-  propagation.setGlobalPropagator(new W3CTraceContextPropagator());
+  // Trace context plus W3C baggage: baggage carries demo settings (slow mode)
+  // across every hop, including the outbox and NATS headers.
+  propagation.setGlobalPropagator(
+    new CompositePropagator({ propagators: [new W3CTraceContextPropagator(), new W3CBaggagePropagator()] }),
+  );
   trace.setGlobalTracerProvider(provider);
   return provider;
 }
@@ -89,6 +93,36 @@ export function currentTraceHeaders(ctx: Context = context.active()): Record<str
 /** Restores a context from a header map produced by {@link currentTraceHeaders}. */
 export function contextFromHeaders(headers: Record<string, string | undefined>): Context {
   return propagation.extract(context.active(), headers);
+}
+
+/** Reads a W3C baggage entry from the active context. */
+export function baggageValue(key: string, ctx: Context = context.active()): string | undefined {
+  return propagation.getBaggage(ctx)?.getEntry(key)?.value;
+}
+
+/** Runs `fn` with extra baggage entries, which every later hop inherits. */
+export function withBaggage<T>(entries: Record<string, string>, fn: () => T): T {
+  const current = propagation.getBaggage(context.active()) ?? propagation.createBaggage();
+  let next = current;
+  for (const [k, v] of Object.entries(entries)) next = next.setEntry(k, { value: v });
+  return context.with(propagation.setBaggage(context.active(), next), fn);
+}
+
+/** Demo "slow mode": how long each service holds a message before handling it. */
+export const PACE_KEY = "demo.pace";
+/** Failure lab: the visitor's lab id, so faults apply to their orders only. */
+export const LAB_KEY = "demo.lab";
+export const SLOW_PACE_MS = 1000;
+
+/**
+ * In slow mode (baggage demo.pace=slow), waits SLOW_PACE_MS inside its own
+ * span, so the pause is visible in the trace. A no-op in real time.
+ */
+export async function slowModeHold(): Promise<void> {
+  if (baggageValue(PACE_KEY) !== "slow") return;
+  await withSpan("demo: slow-mode hold", { attributes: { "demo.hold_ms": SLOW_PACE_MS } }, () =>
+    new Promise<void>((r) => setTimeout(r, SLOW_PACE_MS)),
+  );
 }
 
 export const currentTraceId = (): string | undefined =>

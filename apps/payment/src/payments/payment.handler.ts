@@ -1,6 +1,7 @@
 import { PaymentCommand } from "@checkout/contracts";
 import {
   claimMessage,
+  LabFaults,
   enqueue,
   outboxRow,
   OutboxRelay,
@@ -39,6 +40,7 @@ export class PaymentHandler implements OnApplicationBootstrap, BeforeApplication
     @Inject(DB) private readonly database: Database,
     @Inject(BUS) private readonly bus: Bus,
     private readonly relay: OutboxRelay,
+    private readonly faults: LabFaults,
   ) {}
 
   async onApplicationBootstrap() {
@@ -48,6 +50,7 @@ export class PaymentHandler implements OnApplicationBootstrap, BeforeApplication
       durable: CONSUMER,
       filterSubjects: ["checkout.cmd.payment.>"],
       handle: (data) => this.handle(data),
+      faults: this.faults,
       log: (m, e) => this.log.warn(`${m} ${e ?? ""}`),
     });
   }

@@ -15,6 +15,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -22,8 +23,19 @@ import {
 } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { Readable } from "node:stream";
+import { LAB_KEY, PACE_KEY, withBaggage } from "@checkout/telemetry";
+import * as z from "zod";
 import { RateLimiter } from "./rate-limit.js";
 import { Upstream, upstreams } from "./upstream.js";
+
+const ORDER_RATE = Number(process.env.ORDER_RATE_PER_SECOND ?? 100);
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LabChange = z.object({
+  service: z.enum(["inventory", "payment"]),
+  fault: z.enum(["down", "crash"]),
+  on: z.boolean(),
+});
 
 const limitParam = (v?: string) => String(Math.min(Math.max(Number(v) || 20, 1), 100));
 
@@ -32,8 +44,9 @@ const limitParam = (v?: string) => String(Math.min(Math.max(Number(v) || 20, 1),
 export class ApiController implements BeforeApplicationShutdown {
   /** Open SSE streams; closed on shutdown so the HTTP server can stop promptly. */
   private readonly streams = new Set<{ abort: AbortController; res: Response }>();
-  private readonly orderLimiter = new RateLimiter(20, 0.5);
-  private readonly adminLimiter = new RateLimiter(10, 0.2);
+  /** Per visitor (IP): bursts of up to ORDER_RATE orders, refilled at ORDER_RATE per second. */
+  private readonly orderLimiter = new RateLimiter(ORDER_RATE, ORDER_RATE);
+  private readonly adminLimiter = new RateLimiter(20, 2);
 
   constructor(private readonly upstream: Upstream) {}
 
@@ -68,20 +81,55 @@ export class ApiController implements BeforeApplicationShutdown {
     @Ip() ip: string,
     @Body() body: unknown,
     @Headers("idempotency-key") key: string | undefined,
+    @Headers("x-demo-pace") pace: string | undefined,
+    @Headers("x-demo-lab") lab: string | undefined,
     @Res({ passthrough: true }) res: Response,
   ): Promise<OrderView> {
-    this.orderLimiter.take(ip);
+    this.orderLimiter.take(ip, res);
     const parsed = PlaceOrderRequest.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException({ error: "invalid order", details: parsed.error.issues });
     }
-    const { status, body: order } = await this.upstream.call<OrderView>("order", "/orders", {
-      method: "POST",
-      body: parsed.data,
-      headers: key ? { "idempotency-key": key } : {},
-    });
+    // Slow mode rides along as W3C baggage, so every service downstream sees it.
+    // Only the gateway decides the value; anything else a client sends is dropped.
+    const call = () =>
+      this.upstream.call<OrderView>("order", "/orders", {
+        method: "POST",
+        body: parsed.data,
+        headers: key ? { "idempotency-key": key } : {},
+      });
+    // The failure lab id rides along too, so faults hit this visitor's orders only.
+    const baggage: Record<string, string> = { [PACE_KEY]: pace === "slow" ? "slow" : "realtime" };
+    if (lab && UUID.test(lab)) baggage[LAB_KEY] = lab.toLowerCase();
+    const { status, body: order } = await withBaggage(baggage, call);
     res.status(status);
     return order;
+  }
+
+  /** Failure lab: this visitor's fault switches across Inventory and Payment. */
+  @Get("lab")
+  async lab(@Headers("x-demo-lab") lab: string | undefined): Promise<unknown> {
+    const id = this.labId(lab);
+    const [inventory, payment] = await Promise.all([
+      this.upstream.call("inventory", `/lab/${id}`),
+      this.upstream.call("payment", `/lab/${id}`),
+    ]);
+    return { inventory: inventory.body, payment: payment.body };
+  }
+
+  @Put("lab")
+  async setLab(@Ip() ip: string, @Headers("x-demo-lab") lab: string | undefined, @Body() body: unknown): Promise<unknown> {
+    this.adminLimiter.take(ip);
+    const id = this.labId(lab);
+    const parsed = LabChange.safeParse(body);
+    if (!parsed.success) throw new BadRequestException({ error: "invalid lab change", details: parsed.error.issues });
+    const { service, fault, on } = parsed.data;
+    return (await this.upstream.call(service, `/lab/${id}`, { method: "PUT", body: { fault, on } })).body;
+  }
+
+  private labId(lab: string | undefined): string {
+    if (!lab || !UUID.test(lab)) throw new BadRequestException({ error: "x-demo-lab must be a UUID" });
+    return lab.toLowerCase();
   }
 
   @Get("orders")
