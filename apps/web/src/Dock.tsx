@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, labActive, newTraceId, type LabState, type Pace } from "./api";
 import { LabSheet } from "./LabSheet";
 import { money } from "./format";
-import { announceOwnRequest } from "./Graph";
+import { announceOwnRequest } from "./map/useLiveActivity";
 import { Bag, Close, Flask, Minus, Plus, Refresh } from "./icons";
 
 const CARD_LIMIT = 50_000;
@@ -30,15 +30,13 @@ interface Props {
   pace: Pace;
   onPace: (p: Pace) => void;
   products: ProductView[] | undefined;
-  /** called before the request leaves, with the trace id the saga will carry */
   onPlacing: (traceId: string) => void;
   onPlaced: (order: OrderView) => void;
   onRestocked: (p: ProductView[]) => void;
 }
 
 export function Dock({ lab, onLabChange, pace, onPace, products, onPlacing, onPlaced, onRestocked }: Props) {
-  // Orders in flight. Buttons never lock: each click is its own order with its
-  // own idempotency key, and the gateway's rate limit guards the system.
+  // buttons never lock: each click is its own order; the gateway's rate limit guards the system.
   const [inFlight, setInFlight] = useState(0);
   const [cartPlaced, setCartPlaced] = useState(0);
   const [error, setError] = useState<string>();
@@ -47,8 +45,7 @@ export function Dock({ lab, onLabChange, pace, onPace, products, onPlacing, onPl
   const [labOpen, setLabOpen] = useState(false);
   const labOn = labActive(lab);
 
-  // The lab and cart sheets close on a click anywhere outside the dock (the
-  // dock itself stays usable, so an order can be placed with a sheet open).
+  // sheets close on a click outside the dock; the dock itself stays usable with a sheet open.
   const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!labOpen && !cartOpen) return;
@@ -62,13 +59,12 @@ export function Dock({ lab, onLabChange, pace, onPace, products, onPlacing, onPl
   }, [labOpen, cartOpen]);
 
   async function place(id: string, items: Item[]): Promise<boolean> {
-    // The lab sheet covers the map; get it out of the way so the order can be watched.
+    // the lab sheet covers the map.
     setLabOpen(false);
     setInFlight((n) => n + 1);
     setError(undefined);
     const hopDone = announceOwnRequest();
     try {
-      // One key per click: if this request is retried, the server returns the same order.
       const traceId = newTraceId();
       onPlacing(traceId);
       onPlaced(await api.placeOrder(items, crypto.randomUUID(), pace, traceId));
@@ -91,8 +87,7 @@ export function Dock({ lab, onLabChange, pace, onPace, products, onPlacing, onPl
           placed={cartPlaced}
           onClose={() => setCartOpen(false)}
           onCheckout={async (items) => {
-            // The cart stays open with its items, so the same basket can be
-            // ordered again and again.
+            // the cart stays open, so the same basket can be ordered again.
             if (await place("cart", items)) setCartPlaced((n) => n + 1);
           }}
           onRestocked={onRestocked}
@@ -180,14 +175,12 @@ function Cart({
   onRestocked,
 }: {
   products: ProductView[] | undefined;
-  /** bumps on every successful checkout, to flash a confirmation */
   placed: number;
   onClose: () => void;
   onCheckout: (items: Item[]) => void;
   onRestocked: (p: ProductView[]) => void;
 }) {
   const [cart, setCart] = useState<Record<string, number>>({});
-  // Brief "Order placed" after each checkout; the cart itself stays as it was.
   const [justPlaced, setJustPlaced] = useState(false);
   useEffect(() => {
     if (placed === 0) return;

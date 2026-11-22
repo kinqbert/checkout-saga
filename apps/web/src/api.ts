@@ -6,7 +6,6 @@ import type {
   TraceSpan,
 } from "@checkout/contracts";
 
-/** "slow": every service holds each message ~1 s so a person can follow it. */
 export type Pace = "realtime" | "slow";
 
 export class ApiError extends Error {
@@ -23,21 +22,19 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers: { "content-type": "application/json", ...init.headers },
   });
-  const body = await res.json().catch(() => ({}));
+  const body = await res.json().catch(() => undefined);
   if (!res.ok) {
     const msg = typeof body?.error === "string" ? body.error : `request failed (${res.status})`;
     throw new ApiError(res.status, msg);
   }
+  if (body === undefined) throw new ApiError(res.status, "the API answered with something that isn't JSON");
   return body as T;
 }
 
 const randomHex = (bytes: number) =>
   Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
 
-/**
- * This browser's failure-lab id. Faults the visitor switches on apply only to
- * orders carrying it (as W3C baggage), so nobody breaks the demo for others.
- */
+// this browser's failure-lab id: faults apply only to orders carrying it.
 export const labId: string = (() => {
   try {
     const saved = localStorage.getItem("checkout-saga:lab");
@@ -60,12 +57,10 @@ export type LabState = Record<"inventory" | "payment" | "order", LabSnapshot>;
 export type LabService = keyof LabState;
 export type LabFault = "down" | "slow" | "crash" | "kill";
 
-/** Something in this visitor's failure lab is switched on or armed. */
 export const labActive = (lab: LabState | undefined): boolean =>
   !!lab &&
   Object.values(lab).some((s) => !!s && (!!s.downUntil || !!s.slowUntil || s.crashArmed || s.killArmed));
 
-/** A fresh W3C trace id (16 random bytes as hex). */
 export const newTraceId = () => randomHex(16);
 
 export const api = {
@@ -82,10 +77,7 @@ export const api = {
   order: (id: string) => request<OrderView>(`/orders/${id}`),
   notifications: () => request<NotificationView[]>("/notifications?limit=12"),
   trace: (traceId: string) => request<TraceSpan[]>(`/traces/${traceId}`),
-  /**
-   * The browser starts the trace itself (W3C traceparent), so it knows the
-   * order's trace id before any message of the saga reaches the page.
-   */
+  // the browser starts the trace, so it knows the id before the saga's first span arrives.
   placeOrder: (items: Item[], idempotencyKey: string, pace: Pace, traceId: string) =>
     request<OrderView>("/orders", {
       method: "POST",
