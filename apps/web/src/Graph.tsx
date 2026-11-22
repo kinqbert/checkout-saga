@@ -15,7 +15,9 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type JSX, type SVGProps } from "react";
+import { confettiIn } from "./confetti";
+import { Box, Card, Envelope, Globe, Receipt } from "./icons";
 import { ago, ms as fmtMs, shortType, STATE_LABEL, toneOf, type Tone } from "./format";
 import { api } from "./api";
 import { traceStore, useTraceVersion } from "./traceStore";
@@ -27,22 +29,33 @@ export type ServiceId =
   | "payment"
   | "notify";
 
-const SERVICES: Record<ServiceId, { label: string; role: string; listens: string[]; emits: string[] }> = {
-  gateway: { label: "Gateway", role: "Public HTTP API", listens: ["POST /orders"], emits: ["→ Order (HTTP)"] },
+const SERVICES: Record<
+  ServiceId,
+  { label: string; role: string; Icon: (p: SVGProps<SVGSVGElement>) => JSX.Element; listens: string[]; emits: string[] }
+> = {
+  gateway: { label: "Gateway", Icon: Globe, role: "Public HTTP API", listens: ["POST /orders"], emits: ["→ Order (HTTP)"] },
   order: {
     label: "Order",
+    Icon: Receipt,
     role: "Saga orchestrator",
-    listens: ["inventory.reserved", "inventory.rejected", "inventory.released", "payment.captured", "payment.failed", "catalog.product.upserted"],
-    emits: ["inventory.reserve", "inventory.release", "payment.capture", "order.confirmed", "order.cancelled"],
+    listens: ["inventory.reserved", "inventory.rejected", "inventory.released", "payment.captured", "payment.failed", "payment.refunded", "catalog.product.upserted"],
+    emits: ["inventory.reserve", "inventory.release", "payment.capture", "payment.refund", "order.confirmed", "order.cancelled"],
   },
   inventory: {
     label: "Inventory",
+    Icon: Box,
     role: "Stock and catalogue",
     listens: ["inventory.reserve", "inventory.release"],
     emits: ["inventory.reserved", "inventory.rejected", "inventory.released", "catalog.product.upserted"],
   },
-  payment: { label: "Payment", role: "Card provider", listens: ["payment.capture"], emits: ["payment.captured", "payment.failed"] },
-  notify: { label: "Notify", role: "E-mail, after the saga", listens: ["order.confirmed", "order.cancelled"], emits: [] },
+  payment: {
+    label: "Payment",
+    Icon: Card,
+    role: "Card provider",
+    listens: ["payment.capture", "payment.refund"],
+    emits: ["payment.captured", "payment.failed", "payment.refunded"],
+  },
+  notify: { label: "Notify", Icon: Envelope, role: "E-mail, after the saga", listens: ["order.confirmed", "order.cancelled"], emits: [] },
 };
 
 /** Two lines per pair of services: one outgoing, one returning. */
@@ -266,6 +279,8 @@ type ServiceNodeData = {
   /** what the service is doing or just did; the stats show when there is nothing */
   status: Status | undefined;
   stats: Stats | undefined;
+  /** bumps each time one of your orders is confirmed: confetti in this card */
+  party: number;
   /** the card's detail panel is open */
   open: boolean;
   /** which side of the card the panel opens on */
@@ -292,7 +307,13 @@ const LOG_SIZE = 8;
 type Stats = { handled: number; recent: number[] };
 const STATS_WINDOW = 20;
 
-type Status = { text: string; tone: Tone; doing?: boolean };
+type Status = {
+  text: string;
+  tone: Tone;
+  doing?: boolean;
+  /** what the line is about; a new one fades in, a ticking countdown doesn't */
+  id?: string;
+};
 
 /** What a service is doing while it works on a message of this type ("http" = your POST). */
 const DOING: Record<string, string> = {
@@ -300,6 +321,8 @@ const DOING: Record<string, string> = {
   "checkout.cmd.inventory.reserve": "Reserving stock…",
   "checkout.cmd.inventory.release": "Releasing stock…",
   "checkout.cmd.payment.capture": "Charging card…",
+  "checkout.cmd.payment.refund": "Refunding late charge…",
+  "checkout.evt.payment.refunded": "Handling refund…",
   "checkout.evt.inventory.reserved": "Handling stock reply…",
   "checkout.evt.inventory.rejected": "Handling stock reply…",
   "checkout.evt.inventory.released": "Handling stock reply…",
@@ -314,6 +337,8 @@ const DONE: Record<string, Status> = {
   "checkout.cmd.inventory.reserve": { text: "Asked for stock", tone: "info" },
   "checkout.cmd.inventory.release": { text: "Asked to release stock", tone: "comp" },
   "checkout.cmd.payment.capture": { text: "Asked for payment", tone: "info" },
+  "checkout.cmd.payment.refund": { text: "Asked for a refund", tone: "comp" },
+  "checkout.evt.payment.refunded": { text: "Late charge refunded", tone: "comp" },
   "checkout.evt.inventory.reserved": { text: "Stock reserved", tone: "ok" },
   "checkout.evt.inventory.rejected": { text: "Out of stock", tone: "fail" },
   "checkout.evt.inventory.released": { text: "Stock released", tone: "comp" },
@@ -385,6 +410,7 @@ const ServiceNodeView = memo(function ServiceNodeView({
       aria-expanded={data.open}
       title={data.open ? undefined : `Show recent events at ${svc.label}`}
     >
+      {data.party > 0 && <NodeConfetti key={data.party} />}
       {data.flash > 0 && (
         <span key={data.flash} className={`node-ring tone-${data.tone}`} />
       )}
@@ -395,18 +421,17 @@ const ServiceNodeView = memo(function ServiceNodeView({
           type={a.type}
           position={POSITION[a.side]}
           isConnectable={false}
-          // Side anchors are measured in px from the top of the card at its
-          // resting height (72px), so a card growing its status line keeps
-          // its lines in place.
-          style={
-            a.side === "l" || a.side === "r"
-              ? { top: `${Math.round((a.pct / 100) * 72)}px` }
-              : { left: `${a.pct}%` }
-          }
+          // Every card has the same fixed height (its status line never grows),
+          // so anchors are a share of the card's side, and paired lines stay
+          // exact parallel shifts.
+          style={a.side === "l" || a.side === "r" ? { top: `${a.pct}%` } : { left: `${a.pct}%` }}
         />
       ))}
       <span className="node-head">
-        <span className="node-name">{svc.label}</span>
+        <span className="node-title">
+          <svc.Icon className="node-icon" width={16} height={16} />
+          <span className="node-name">{svc.label}</span>
+        </span>
         {data.down ? (
           <span className="node-down">Down</span>
         ) : (
@@ -436,23 +461,23 @@ function NodePanel({ id, log, onClose }: { id: ServiceId; log: LogEntry[]; onClo
     return () => clearInterval(t);
   }, []);
   return (
-    <div className="panel nodrag nopan" role="dialog" aria-label={`Recent events at ${svc.label}`} onClick={(e) => e.stopPropagation()}>
-      <div className="panel-head">
+    <div className="node-panel nodrag nopan" role="dialog" aria-label={`Recent events at ${svc.label}`} onClick={(e) => e.stopPropagation()}>
+      <div className="node-panel-head">
         <span>Recent at {svc.label}</span>
-        <button className="panel-close" onClick={onClose} aria-label="Close">×</button>
+        <button className="node-panel-close" onClick={onClose} aria-label="Close">×</button>
       </div>
       {log.length === 0 ? (
-        <p className="panel-empty">Nothing yet. Place an order and watch it land here.</p>
+        <p className="node-panel-empty">Nothing yet. Place an order and watch it land here.</p>
       ) : (
-        <ul className="panel-log">
+        <ul className="node-panel-log">
           {log.map((e) => (
             <li key={e.id} className={`tone-${e.error ? "fail" : e.tone} ${e.mine ? "is-mine" : ""}`}>
-              <span className="panel-dir" aria-label={e.dir === "in" ? "received" : "sent"}>
+              <span className="node-panel-dir" aria-label={e.dir === "in" ? "received" : "sent"}>
                 {e.dir === "in" ? "←" : "→"}
               </span>
-              <span className="panel-type">{e.label}</span>
-              {e.mine && <span className="panel-mine">yours</span>}
-              <span className="panel-meta">
+              <span className="node-panel-type">{e.label}</span>
+              {e.mine && <span className="node-panel-mine">yours</span>}
+              <span className="node-panel-meta">
                 {e.ms !== undefined && <>{fmtMs(e.ms)} · </>}
                 {ago(new Date(e.at).toISOString(), now)}
               </span>
@@ -460,7 +485,7 @@ function NodePanel({ id, log, onClose }: { id: ServiceId; log: LogEntry[]; onClo
           ))}
         </ul>
       )}
-      <dl className="panel-contract">
+      <dl className="node-panel-contract">
         <dt>Listens</dt>
         <dd>{svc.listens.join(", ")}</dd>
         <dt>Emits</dt>
@@ -468,6 +493,13 @@ function NodePanel({ id, log, onClose }: { id: ServiceId; log: LogEntry[]; onClo
       </dl>
     </div>
   );
+}
+
+/** A confetti burst that stays inside its card. */
+function NodeConfetti() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => (ref.current ? confettiIn(ref.current) : undefined), []);
+  return <canvas ref={ref} className="node-confetti" aria-hidden="true" />;
 }
 
 /**
@@ -479,7 +511,7 @@ function NodeStatus({ id, status, stats }: { id: ServiceId; status: Status | und
   if (status)
     return (
       <span className="node-status" role="status">
-        <span key={status.text} className={`node-status-text tone-${status.tone} ${status.doing ? "is-doing" : ""}`}>
+        <span key={status.id ?? status.text} className={`node-status-text tone-${status.tone} ${status.doing ? "is-doing" : ""}`}>
           {status.text}
         </span>
       </span>
@@ -754,8 +786,11 @@ interface GraphProps {
   slow?: boolean;
   /** Trace ids of the visitor's own orders: their messages are drawn in colour. */
   mine: Set<string>;
-  /** Saga state of the order the visitor is looking at, shown under the Order node. */
-  focusState?: string | undefined;
+  /**
+   * The order the Order card talks about when it has nothing newer to say:
+   * the one open in the panel, else your latest order while it runs.
+   */
+  focus?: { state: string; deadlineAt: string | null } | undefined;
   insets: Insets;
 }
 
@@ -764,9 +799,18 @@ export function Graph({
   slow = false,
   down = {},
   mine,
-  focusState,
+  focus,
   insets,
 }: GraphProps) {
+  const focusState = focus?.state;
+  // A running saga counts down to its deadline on the Order card.
+  const deadline = focus?.deadlineAt ? Date.parse(focus.deadlineAt) : undefined;
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!deadline) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [deadline]);
   // The selected order's spans: live from the stream, or fetched once when the
   // order is older than what the page has seen.
   useTraceVersion();
@@ -802,6 +846,8 @@ export function Graph({
   // seconds) and what it started on when your message landed.
   const [done, setDone] = useState<Record<string, Status & { at: number }>>({});
   const [doing, setDoing] = useState<Record<string, { text: string; at: number }>>({});
+  // One of your orders was confirmed: the Order card throws confetti.
+  const [party, setParty] = useState(0);
   const narrow = useNarrow();
   const tight = useNarrow("(max-width: 1320px)");
   const layout = narrow
@@ -855,16 +901,17 @@ export function Graph({
       sync();
       const text = DOING[type];
       if (text) setDoing((d) => ({ ...d, [dest]: { text, at: Date.now() } }));
-      // Safety net: no real step takes this long, so never track forever. A
-      // message a down service refused may legitimately wait (lab faults last
-      // up to 60 s), so it gets a longer leash.
+      // Safety net, in case the "done" span never reaches the page. A step
+      // can legitimately take ~25 s (the failure lab's slow card provider
+      // answers after the saga's 20 s deadline), and a message a down service
+      // refused may wait up to 60 s, so neither is cut short.
       const check = (elapsed: number) =>
         setTimeout(() => {
           if (pending.current.get(key) !== entry) return;
-          if (entry.waiting && elapsed < 70_000) return check(elapsed + 4000);
+          if (elapsed < (entry.waiting ? 70_000 : 30_000)) return check(elapsed + 2000);
           finish(key);
-        }, 4000);
-      check(4000);
+        }, 2000);
+      check(2000);
     }, travelMs);
   };
   const finish = (key: string) => {
@@ -916,51 +963,52 @@ export function Graph({
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
   const closePanel = useMemo(() => () => setOpen(null), []);
-  useEffect(
-    () =>
-      traceStore.subscribe((spans) => {
-        const add: Partial<Record<ServiceId, number[]>> = {};
-        const logged: Partial<Record<ServiceId, LogEntry[]>> = {};
-        for (const s of [...spans].sort((a, b) => a.startMs - b.startMs)) {
-          const id = workOf(s);
-          if (id) (add[id] ??= []).push(s.durationMs);
-          const type = String(s.attributes["messaging.message.type"] ?? "");
-          const out = s.kind === "producer" && type && s.service in SERVICES;
-          if (!id && !out) continue;
-          const svc = (id ?? s.service) as ServiceId;
-          (logged[svc] ??= []).push({
-            id: s.spanId,
-            dir: id ? "in" : "out",
-            label: type ? shortType(type) : "POST /orders",
-            tone: type ? toneOf(type) : "info",
-            at: s.startMs,
-            ms: id ? s.durationMs : undefined,
-            mine: mineRef.current.has(s.traceId),
-            error: s.error,
-          });
-        }
-        if (Object.keys(logged).length > 0)
-          setLogs((prev) => {
-            const next = { ...prev };
-            for (const [k, list] of Object.entries(logged) as [ServiceId, LogEntry[]][])
-              next[k] = [...list.reverse(), ...(prev[k] ?? [])].slice(0, LOG_SIZE);
-            return next;
-          });
-        if (Object.keys(add).length === 0) return;
-        setStats((prev) => {
-          const out = { ...prev };
-          for (const [id, ds] of Object.entries(add) as [ServiceId, number[]][]) {
-            const cur = prev[id] ?? { handled: 0, recent: [] };
-            out[id] = {
-              handled: cur.handled + ds.length,
-              recent: [...cur.recent, ...ds].slice(-STATS_WINDOW),
-            };
-          }
-          return out;
+  useEffect(() => {
+    const ingest = (spans: TraceSpan[]) => {
+      const add: Partial<Record<ServiceId, number[]>> = {};
+      const logged: Partial<Record<ServiceId, LogEntry[]>> = {};
+      for (const s of [...spans].sort((a, b) => a.startMs - b.startMs)) {
+        const id = workOf(s);
+        if (id) (add[id] ??= []).push(s.durationMs);
+        const type = String(s.attributes["messaging.message.type"] ?? "");
+        const out = s.kind === "producer" && type && s.service in SERVICES;
+        if (!id && !out) continue;
+        const svc = (id ?? s.service) as ServiceId;
+        (logged[svc] ??= []).push({
+          id: s.spanId,
+          dir: id ? "in" : "out",
+          label: type ? shortType(type) : "POST /orders",
+          tone: type ? toneOf(type) : "info",
+          at: s.startMs,
+          ms: id ? s.durationMs : undefined,
+          mine: mineRef.current.has(s.traceId),
+          error: s.error,
         });
-      }),
-    [],
-  );
+      }
+      if (Object.keys(logged).length > 0)
+        setLogs((prev) => {
+          const next = { ...prev };
+          for (const [k, list] of Object.entries(logged) as [ServiceId, LogEntry[]][])
+            next[k] = [...list.reverse(), ...(prev[k] ?? [])].slice(0, LOG_SIZE);
+          return next;
+        });
+      if (Object.keys(add).length === 0) return;
+      setStats((prev) => {
+        const out = { ...prev };
+        for (const [id, ds] of Object.entries(add) as [ServiceId, number[]][]) {
+          const cur = prev[id] ?? { handled: 0, recent: [] };
+          out[id] = {
+            handled: cur.handled + ds.length,
+            recent: [...cur.recent, ...ds].slice(-STATS_WINDOW),
+          };
+        }
+        return out;
+      });
+    };
+    // The stream may have delivered its backlog before this card mounted.
+    ingest(traceStore.all());
+    return traceStore.subscribe(ingest);
+  }, []);
 
   useEffect(
     () =>
@@ -969,6 +1017,8 @@ export function Graph({
         const nextPulses: Record<string, Pulse[]> = {};
         const nextFlash: Record<string, Tone> = {};
         const nextDone: Record<string, Status & { at: number }> = {};
+        const pinned = new Set<string>();
+        let confirmed = 0;
         for (const s of [...spans].sort((a, b) => a.startMs - b.startMs)) {
           const isMine = mineRef.current.has(s.traceId);
           const type = String(s.attributes["messaging.message.type"] ?? "");
@@ -977,18 +1027,42 @@ export function Graph({
           if (isMine && s.service === "gateway") continue;
           // Any processing span ends the tracking of its message, even if the order
           // has since dropped out of "yours" (only the latest 5 are kept).
-          if (s.kind === "consumer" && s.parentSpanId) {
+          // Deliveries are matched by message id, not span: a message can be
+          // published twice (re-sent after a crash) but is delivered once.
+          const msgKey = String(s.attributes["messaging.message.id"] ?? "") || s.parentSpanId;
+          if (s.kind === "consumer" && msgKey) {
             if (s.attributes["demo.lab.refused"])
-              refuse(
-                s.parentSpanId,
-                Number(s.attributes["messaging.message.delivery_count"] ?? 1),
-              );
-            else finish(s.parentSpanId);
+              refuse(msgKey, Number(s.attributes["messaging.message.delivery_count"] ?? 1));
+            else finish(msgKey);
+          }
+          // A re-publish JetStream dropped as a duplicate: nothing travelled.
+          if (s.kind === "producer" && s.attributes["messaging.nats.duplicate"]) {
+            if (isMine) {
+              nextFlash[s.service] = "comp";
+              nextDone[s.service] = { text: "Re-sent, copy dropped", tone: "comp", at: Date.now() };
+              pinned.add(s.service);
+            }
+            continue;
           }
           // Failure lab moments worth telling on the card.
           if (isMine && s.attributes["demo.lab.crashed"]) {
             nextFlash[s.service] = "fail";
             nextDone[s.service] = { text: "Crashed before ack", tone: "fail", at: Date.now() };
+            continue;
+          }
+          if (isMine && s.attributes["demo.lab.killed"]) {
+            nextFlash[s.service] = "fail";
+            nextDone[s.service] = { text: "Killed, restarting…", tone: "fail", at: Date.now() };
+            pinned.add(s.service);
+            continue;
+          }
+          // The order gave up waiting: say so, and keep it over the messages
+          // the timeout sends in the same breath.
+          if (isMine && s.name === "saga timeout") {
+            const on = s.attributes["checkout.saga.waiting_in"] === "AWAITING_STOCK" ? "inventory" : "payment";
+            nextFlash[s.service] = "fail";
+            nextDone[s.service] = { text: `Timed out on ${on}`, tone: "fail", at: Date.now() };
+            pinned.add(s.service);
             continue;
           }
           if (isMine && s.attributes["checkout.inbox.duplicate"]) {
@@ -1002,13 +1076,14 @@ export function Graph({
             const told = s.service === "notify" ? NOTIFY_DONE[type] : undefined;
             if (told) nextDone[s.service] = { ...told, at: Date.now() };
           }
-          if (isMine && s.kind === "producer" && DONE[type])
+          if (isMine && s.kind === "producer" && type === "checkout.evt.order.confirmed") confirmed++;
+          if (isMine && s.kind === "producer" && DONE[type] && !pinned.has(s.service))
             nextDone[s.service] = { ...DONE[type]!, at: Date.now() };
           const route = edgeFor(s);
           const ms =
             isMine && slowRef.current ? SLOW_TRAVEL_MS : isMine ? 900 : 1100;
           if (route && isMine && s.kind === "producer")
-            track(s.spanId, destination(route.edge, route.reverse), ms, type);
+            track(msgKey ?? s.spanId, destination(route.edge, route.reverse), ms, type);
           if (route)
             (nextPulses[route.edge] ??= []).push({
               id: s.spanId,
@@ -1028,6 +1103,7 @@ export function Graph({
           });
         }
         if (Object.keys(nextDone).length) setDone((d) => ({ ...d, ...nextDone }));
+        if (confirmed > 0) setParty((n) => n + 1);
         if (Object.keys(nextPulses).length) {
           setPulses((p) => {
             const out = { ...p };
@@ -1062,16 +1138,25 @@ export function Graph({
         const d = done[id];
         const doingNow = busy[id] ? doing[id] : undefined;
         if (w && w.count > 0)
-          status = { text: `Down · ${w.count} waiting, retry #${w.retry}`, tone: "fail" };
+          status = { text: `Down · ${w.count} waiting, retry #${w.retry}`, tone: "fail", id: "down" };
         else if (doingNow && (!d || doingNow.at > d.at))
           status = { text: doingNow.text, tone: "info", doing: true };
         else if (d) status = { text: d.text, tone: d.tone };
-        else if (id === "order" && focusState && STATE_LABEL[focusState] && focusState !== "CONFIRMED" && focusState !== "CANCELLED")
+        else if (id === "order" && focusState && STATE_LABEL[focusState] && focusState !== "CONFIRMED" && focusState !== "CANCELLED") {
+          const left = deadline ? Math.max(0, Math.ceil((deadline - now) / 1000)) : undefined;
+          const waitingOn = focusState === "AWAITING_STOCK" ? "stock" : focusState === "AWAITING_PAYMENT" ? "payment" : undefined;
           status = {
-            text: `${STATE_LABEL[focusState]}…`,
-            tone: focusState === "RELEASING_STOCK" ? "comp" : "info",
+            text:
+              waitingOn && left !== undefined
+                ? left > 0
+                  ? `Waiting for ${waitingOn} · ${left}s left`
+                  : `Giving up on ${waitingOn}…`
+                : `${STATE_LABEL[focusState]}…`,
+            tone: focusState === "RELEASING_STOCK" ? "comp" : left === 0 ? "fail" : "info",
             doing: true,
+            id: `focus:${focusState}:${left === 0 ? "over" : "wait"}`,
           };
+        }
         return {
           id,
           type: "service",
@@ -1083,6 +1168,7 @@ export function Graph({
             tone: flash[id]?.tone ?? "info",
             down: !!down[id],
             busy: !!busy[id],
+            party: id === "order" ? party : 0,
             waiting: waiting[id],
             status,
             stats: stats[id],
@@ -1099,9 +1185,12 @@ export function Graph({
       done,
       doing,
       focusState,
+      deadline,
+      now,
       waiting,
       busy,
       stats,
+      party,
       logs,
       open,
       narrow,

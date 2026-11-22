@@ -52,17 +52,25 @@ export const labId: string = (() => {
 
 export interface LabSnapshot {
   downUntil: string | null;
+  slowUntil: string | null;
   crashArmed: boolean;
+  killArmed: boolean;
 }
-export type LabState = Record<"inventory" | "payment", LabSnapshot>;
+export type LabState = Record<"inventory" | "payment" | "order", LabSnapshot>;
 export type LabService = keyof LabState;
+export type LabFault = "down" | "slow" | "crash" | "kill";
+
+/** Something in this visitor's failure lab is switched on or armed. */
+export const labActive = (lab: LabState | undefined): boolean =>
+  !!lab &&
+  Object.values(lab).some((s) => !!s && (!!s.downUntil || !!s.slowUntil || s.crashArmed || s.killArmed));
 
 /** A fresh W3C trace id (16 random bytes as hex). */
 export const newTraceId = () => randomHex(16);
 
 export const api = {
   lab: () => request<LabState>("/lab", { headers: { "x-demo-lab": labId } }),
-  setLab: (service: LabService, fault: "down" | "crash", on: boolean) =>
+  setLab: (service: LabService, fault: LabFault, on: boolean) =>
     request<LabSnapshot>("/lab", {
       method: "PUT",
       body: JSON.stringify({ service, fault, on }),

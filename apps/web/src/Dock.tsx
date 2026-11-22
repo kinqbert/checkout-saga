@@ -1,6 +1,6 @@
 import type { Item, OrderView, ProductView } from "@checkout/contracts";
 import { useEffect, useRef, useState } from "react";
-import { api, newTraceId, type LabState, type Pace } from "./api";
+import { api, labActive, newTraceId, type LabState, type Pace } from "./api";
 import { LabSheet } from "./LabSheet";
 import { money } from "./format";
 import { announceOwnRequest } from "./Graph";
@@ -45,9 +45,25 @@ export function Dock({ lab, onLabChange, pace, onPace, products, onPlacing, onPl
   const [hint, setHint] = useState(DEFAULT_HINT);
   const [cartOpen, setCartOpen] = useState(false);
   const [labOpen, setLabOpen] = useState(false);
-  const labActive = !!lab && (!!lab.payment.downUntil || !!lab.inventory.downUntil || lab.inventory.crashArmed);
+  const labOn = labActive(lab);
+
+  // The lab and cart sheets close on a click anywhere outside the dock (the
+  // dock itself stays usable, so an order can be placed with a sheet open).
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!labOpen && !cartOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (wrapRef.current?.contains(e.target as Node)) return;
+      setLabOpen(false);
+      setCartOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [labOpen, cartOpen]);
 
   async function place(id: string, items: Item[]): Promise<boolean> {
+    // The lab sheet covers the map; get it out of the way so the order can be watched.
+    setLabOpen(false);
     setInFlight((n) => n + 1);
     setError(undefined);
     const hopDone = announceOwnRequest();
@@ -67,7 +83,7 @@ export function Dock({ lab, onLabChange, pace, onPace, products, onPlacing, onPl
   }
 
   return (
-    <div className="dock-wrap">
+    <div className="dock-wrap" ref={wrapRef}>
       {labOpen && <LabSheet state={lab} onChange={onLabChange} onClose={() => setLabOpen(false)} />}
       {cartOpen && (
         <Cart
@@ -130,7 +146,7 @@ export function Dock({ lab, onLabChange, pace, onPace, products, onPlacing, onPl
           <span className="label-short">Cart</span>
         </button>
         <button
-          className={`btn btn-ghost btn-icon ${labOpen ? "is-on" : ""} ${labActive ? "is-armed" : ""}`}
+          className={`btn btn-ghost btn-icon ${labOpen ? "is-on" : ""} ${labOn ? "is-armed" : ""}`}
           aria-expanded={labOpen}
           aria-controls="lab"
           aria-label="Failure lab"
@@ -142,7 +158,7 @@ export function Dock({ lab, onLabChange, pace, onPace, products, onPlacing, onPl
           <Flask />
           <span className="label-long">Failure lab</span>
           <span className="label-short">Lab</span>
-          {labActive && <i className="lab-dot" aria-hidden="true" />}
+          {labOn && <i className="lab-dot" aria-hidden="true" />}
         </button>
       </div>
       <p id="dock-hint" className={`dock-hint ${error ? "is-error" : ""}`} aria-live="polite">

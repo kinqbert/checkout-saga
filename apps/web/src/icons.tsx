@@ -75,3 +75,35 @@ export const GitHub = (p: SVGProps<SVGSVGElement>) => (
     <path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.35c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.66 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z" />
   </svg>
 );
+
+// ── Service marks, one per card on the map ──
+export const Globe = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <circle cx="10" cy="10" r="6.5" />
+    <path d="M3.5 10h13M10 3.5c-1.9 1.9-2.8 4.1-2.8 6.5s.9 4.6 2.8 6.5c1.9-1.9 2.8-4.1 2.8-6.5s-.9-4.6-2.8-6.5Z" />
+  </Icon>
+);
+export const Receipt = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <path d="M5.5 3.5h9v13l-1.5-1-1.5 1-1.5-1-1.5 1-1.5-1-1.5 1v-13Z" />
+    <path d="M8 7.5h4M8 10.5h4" />
+  </Icon>
+);
+export const Box = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <path d="M10 3.5 16 6.5v7l-6 3-6-3v-7l6-3Z" />
+    <path d="m4 6.5 6 3 6-3M10 9.5v7" />
+  </Icon>
+);
+export const Card = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <rect x="3" y="5" width="14" height="10" rx="1.5" />
+    <path d="M3 8.5h14M6 12h2.5" />
+  </Icon>
+);
+export const Envelope = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <rect x="3" y="5" width="14" height="10" rx="1.5" />
+    <path d="m3.5 6 6.5 5 6.5-5" />
+  </Icon>
+);

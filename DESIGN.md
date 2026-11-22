@@ -187,7 +187,7 @@ The rejected world (cream on near-black, a display serif, coral, halftone) is go
 A neutral grey ramp (Tailwind-neutral in character) with one blue signal and three outcome hues, each tuned separately for light and dark.
 
 ### Primary
-- **Signal Blue** (signal-blue; brighter signal-blue-dark in dark): the visitor's own messages on the map (pulses, live edges, live edge labels, the "Your messages" legend dot, in-progress step dots), the focus ring, text selection tint, and the blue node of the brand mark. Never a button fill.
+- **Signal Blue** (signal-blue; brighter signal-blue-dark in dark): the visitor's own messages on the map (pulses, live edges, live edge labels, the "Your messages" legend dot, in-progress step dots), the focus ring, text selection tint. Never a button fill.
 
 ### Secondary
 - **Outcome Green** (outcome-green): success. Completed steps, confirmed cards, the "Live" connection dot.
@@ -239,7 +239,7 @@ No web fonts ship.
 
 The service map fills the viewport (React Flow, fit to view with padding, a 20px dot grid at 1px). Nothing pushes the map aside; every instrument is absolutely positioned over it with a high z-order:
 
-- **Masthead** top-left at 24px / 28px: mark, title, a 36ch lede, a byline.
+- **Masthead** top-left at 24px / 28px: title, a 36ch lede, a byline.
 - **Corner** top-right at 20px / 24px: live dot, "How it works" text button, GitHub secondary button, 16px apart.
 - **Dock** bottom-centre, 24px up, with a one-line hint beneath it that reports hover intent and errors.
 - **Order panel** top-right under the corner (72px down), 380px wide, scrolling inside its own max-height.
@@ -264,9 +264,9 @@ Hybrid: hairlines do most of the work, and shadows are soft, low and reserved fo
 
 ## Shapes
 
-Gently rounded, never pill-shaped. 12px for anything that holds content (cards, sheets, dock, the brand mark tile at 8/32), 8px for buttons, the stepper and the reason callout, 6px for icon buttons, history chips, edge labels and the focus ring, 2px for waterfall bars. Dots are circles: status, legend, step and pulse dots are 6 to 8px rounds, and a pending step is an empty dashed circle. Borders are 1px everywhere; live edges thicken to 1.5px and the tone ring to 1.5px.
+Gently rounded, never pill-shaped. 12px for anything that holds content (cards, sheets, dock), 8px for buttons, the stepper and the reason callout, 6px for icon buttons, history chips, edge labels and the focus ring, 2px for waterfall bars. Dots are circles: status, legend, step and pulse dots are 6 to 8px rounds, and a pending step is an empty dashed circle. Borders are 1px everywhere; live edges thicken to 1.5px and the tone ring to 1.5px.
 
-Icons are authored: one family, 1.5px stroke, round caps and joins, on a 20px box (shown at 15 to 18px). The brand mark is three service nodes joined by two messages on a near-black rounded tile, one node in signal blue.
+Icons are authored: one family, 1.5px stroke, round caps and joins, on a 20px box (shown at 15 to 18px). There is no brand mark: the wordmark is the title text. The favicon is a single dot that follows the visitor's latest order (blue, pulsing while the saga runs, amber while releasing stock, then green or red).
 
 ## Components
 

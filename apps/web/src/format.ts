@@ -29,7 +29,7 @@ export const shortType = (type: string) => type.replace(/^checkout\.(cmd|evt)\./
 export type Tone = "ok" | "fail" | "comp" | "info";
 export function toneOf(type: string): Tone {
   if (/rejected|failed|cancelled/.test(type)) return "fail";
-  if (/release/.test(type)) return "comp";
+  if (/release|refund/.test(type)) return "comp";
   if (/confirmed|captured|reserved/.test(type)) return "ok";
   return "info";
 }

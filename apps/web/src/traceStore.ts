@@ -51,6 +51,11 @@ class TraceStore {
     for (const l of this.listeners) l(fresh, live);
   }
 
+  /** Every span held right now (the latest traces), for counters starting late. */
+  all(): TraceSpan[] {
+    return [...this.traces.values()].flat();
+  }
+
   trace(traceId: string): TraceSpan[] {
     return this.traces.get(traceId) ?? [];
   }

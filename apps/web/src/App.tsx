@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
-import { api, type Pace } from "./api";
+import { api, labActive, type Pace } from "./api";
 import { Dock } from "./Dock";
 import { Graph, useNarrow, type Insets } from "./Graph";
 import { HowItWorks } from "./HowItWorks";
 import { Book, GitHub } from "./icons";
 import { useMyOrders } from "./myOrders";
 import { OrderPanel } from "./OrderPanel";
-import { Tracker } from "./Tracker";
+import { useFavicon } from "./favicon";
 import { useStreamStatus } from "./traceStore";
 import { usePoll } from "./usePoll";
 
@@ -17,8 +17,8 @@ export function App() {
   // Failure lab state: polled quickly while something is broken, slowly otherwise.
   const [labFast, setLabFast] = useState(false);
   const lab = usePoll(api.lab, labFast ? 1000 : 6000);
-  const labActive = !!lab.data && (!!lab.data.payment.downUntil || !!lab.data.inventory.downUntil || lab.data.inventory.crashArmed);
-  if (labActive !== labFast) setLabFast(labActive);
+  const labOn = labActive(lab.data);
+  if (labOn !== labFast) setLabFast(labOn);
   const mine = useMyOrders();
   const [selected, setSelected] = useState<string>();
   // "Your orders" is closed by default and only opens when asked.
@@ -43,6 +43,10 @@ export function App() {
   const narrow = useNarrow();
 
   const current = mine.list.find((o) => o.id === selected);
+  // Your latest order while its saga runs: the Order card counts down its deadline.
+  const latest = mine.list[0];
+  const running = latest && latest.state !== "CONFIRMED" && latest.state !== "CANCELLED" ? latest : undefined;
+  useFavicon(mine.list[0]?.state);
   const showPanel = panelOpen && !!current;
 
   // Room the map leaves for the floating UI. The order panel's space is always
@@ -57,17 +61,10 @@ export function App() {
       <Graph
         pathTraceId={showPanel ? current?.traceId ?? undefined : undefined}
         down={{ payment: !!lab.data?.payment.downUntil, inventory: !!lab.data?.inventory.downUntil }}
-        slow={pace === "slow"} mine={mine.traceIds} focusState={showPanel ? current?.state : undefined} insets={insets} />
+        slow={pace === "slow"} mine={mine.traceIds} focus={showPanel ? current : running} insets={insets} />
 
       <header className="masthead">
         <div className="brand">
-          <svg className="mark" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
-            <rect width="32" height="32" rx="8" />
-            <path d="M11 16 21 10M11 16l10 6" />
-            <circle cx="10" cy="16" r="3.5" />
-            <circle cx="22" cy="10" r="3" />
-            <circle className="mark-accent" cx="22" cy="22" r="3" />
-          </svg>
           <h1 className="title">Checkout saga</h1>
         </div>
         <p className="lede">Place an order and watch it cross five services. Every dot is a real message.</p>
@@ -95,16 +92,6 @@ export function App() {
 
       {showPanel && current && (
         <OrderPanel compact={narrow} orders={mine.list} selectedId={current.id} onSelect={setSelected} onClose={() => setPanelOpen(false)} />
-      )}
-      {/* Your latest order, live, in the corner. The full panel is one click away. */}
-      {!showPanel && mine.list[0] && (
-        <Tracker
-          order={mine.list[0]}
-          onOpen={() => {
-            setSelected(mine.list[0]!.id);
-            setPanelOpen(true);
-          }}
-        />
       )}
       {!showPanel && mine.list.length > 0 && (
         <button
