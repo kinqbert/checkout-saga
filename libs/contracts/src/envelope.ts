@@ -1,12 +1,17 @@
 import * as z from "zod";
 
-export const Envelope = z.object({
+/** Fields every message on the bus carries. */
+export const BaseEnvelope = z.object({
   id: z.uuid(),
   type: z.string(),
-  orderId: z.uuid(),
   causationId: z.uuid().optional(),
   occurredAt: z.iso.datetime(),
   payload: z.unknown(),
 });
+export type BaseEnvelope = z.infer<typeof BaseEnvelope>;
 
+/** A message that belongs to one checkout saga. */
+export const Envelope = BaseEnvelope.extend({
+  orderId: z.uuid(),
+});
 export type Envelope = z.infer<typeof Envelope>;

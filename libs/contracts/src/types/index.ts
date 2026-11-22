@@ -1,3 +1,4 @@
-export * from "./inventory";
-export * from "./order";
-export * from "./payment";
+export * from "./catalog.js";
+export * from "./inventory.js";
+export * from "./order.js";
+export * from "./payment.js";

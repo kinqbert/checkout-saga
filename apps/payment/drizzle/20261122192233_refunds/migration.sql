@@ -1,0 +1,1 @@
+ALTER TYPE "payments"."payment_status" ADD VALUE 'REFUNDED';

@@ -1,6 +1,6 @@
 import * as z from "zod";
-import { Envelope } from "../envelope";
-import { ErrorPayload } from "../shared";
+import { Envelope } from "../envelope.js";
+import { ErrorPayload } from "../shared.js";
 
 // GENERAL
 export const Item = z.object({
@@ -12,7 +12,11 @@ export type Item = z.infer<typeof Item>;
 // COMMAND SCHEMAS
 export const ReserveStockCmd = Envelope.extend({
   type: z.literal("checkout.cmd.inventory.reserve"),
-  payload: z.object({ items: z.array(Item).min(1) }),
+  payload: z.object({
+    items: z.array(Item).min(1),
+    /** When the order stops waiting for an answer. Past it, inventory refuses to reserve. */
+    deadline: z.iso.datetime().optional(),
+  }),
 });
 export type ReserveStockCmd = z.infer<typeof ReserveStockCmd>;
 

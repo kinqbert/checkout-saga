@@ -1,0 +1,13 @@
+{
+  "name": "@checkout/trace-relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc -w --preserveWatchOutput & node --watch dist/main.js",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@checkout/contracts": "workspace:*"
+  }
+}
