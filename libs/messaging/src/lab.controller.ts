@@ -1,10 +1,10 @@
-import { LAB_FAULTS, LabCooldownError, LabFaults, type LabSnapshot } from "@checkout/messaging";
+import { LAB_FAULTS, LabCooldownError, LabFaults, type LabSnapshot } from "./lab.js";
 import { BadRequestException, Body, Controller, Get, HttpException, HttpStatus, Param, ParseUUIDPipe, Put } from "@nestjs/common";
 import * as z from "zod";
 
 const FaultChange = z.object({ fault: z.enum(LAB_FAULTS), on: z.boolean() });
 
-/** Failure-lab switches for this service, per visitor lab id (internal; the gateway proxies it). */
+// failure-lab switches of the service it's mounted in; the gateway proxies it as /api/lab.
 @Controller("lab")
 export class LabController {
   constructor(private readonly faults: LabFaults) {}

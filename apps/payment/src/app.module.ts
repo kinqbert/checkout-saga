@@ -1,7 +1,6 @@
 import { Module } from "@nestjs/common";
-import { LabFaults } from "@checkout/messaging";
+import { LabController, LabFaults } from "@checkout/messaging";
 import { HealthController } from "./health.controller.js";
-import { LabController } from "./lab.controller.js";
 import { infraProviders } from "./infra.js";
 import { PaymentHandler } from "./payments/payment.handler.js";
 

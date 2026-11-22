@@ -1,9 +1,8 @@
 import { Module } from "@nestjs/common";
-import { LabFaults } from "@checkout/messaging";
+import { LabController, LabFaults } from "@checkout/messaging";
 import { CatalogConsumer } from "./catalog/catalog.consumer.js";
 import { HealthController } from "./health.controller.js";
 import { infraProviders } from "./infra.js";
-import { LabController } from "./lab.controller.js";
 import { OrdersController } from "./orders/orders.controller.js";
 import { OrdersService } from "./orders/orders.service.js";
 import { SagaRunner } from "./saga/saga.runner.js";

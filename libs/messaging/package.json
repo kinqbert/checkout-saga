@@ -19,9 +19,14 @@
     "@opentelemetry/api": "^1.10.0",
     "drizzle-orm": "1.0.0-rc.4",
     "pg": "^8.23.1",
-    "@checkout/telemetry": "workspace:*"
+    "@checkout/telemetry": "workspace:*",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/pg": "^8.23.1"
+    "@types/pg": "^8.23.1",
+    "@nestjs/common": "^12.6.0"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^12.6.0"
   }
 }

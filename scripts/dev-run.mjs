@@ -1,7 +1,5 @@
-// Dev runner: like `node --watch`, but it also restarts the service when it
-// exits on its own, the way Docker's restart policy does. The failure lab's
-// "Kill Order" experiment really exits the process, so dev needs this too.
-// Usage (from a service folder): node ../../scripts/dev-run.mjs dist/main.js
+// like `node --watch`, but also restarts a service that exits on its own (as Docker would).
+// usage (from a service folder): node ../../scripts/dev-run.mjs dist/main.js
 import { spawn } from "node:child_process";
 import { watch } from "node:fs";
 import { dirname } from "node:path";
@@ -24,7 +22,7 @@ function start() {
   });
 }
 
-// Restart on rebuilt output (tsc -w writes several files at once: debounce).
+// tsc -w writes several files at once: debounce.
 let timer;
 watch(dirname(entry), { recursive: true }, () => {
   clearTimeout(timer);

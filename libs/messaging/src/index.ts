@@ -5,3 +5,4 @@ export * from "./relay.js";
 export * from "./consumer.js";
 export * from "./db.js";
 export * from "./lab.js";
+export * from "./lab.controller.js";
