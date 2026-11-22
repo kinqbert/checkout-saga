@@ -1,0 +1,117 @@
+# Production stack on one VPS. CI builds the image and pushes it to GHCR;
+# the server only pulls and runs it (see README, "Deploying").
+#
+# On the server, next to this file, a `.env` that CI writes on every deploy
+# from the repo's GitHub secrets:
+#   POSTGRES_PASSWORD=<the POSTGRES_PASSWORD secret>
+#   TAG=<the commit sha being deployed>
+#
+#   docker compose up -d --wait
+#
+# (CI copies this file to the server as docker-compose.yaml.)
+#
+# Nothing here is published to the internet: the gateway listens on
+# 127.0.0.1:8090 only (8080 is taken on the VPS), and Caddy (TLS) proxies
+# saga.kinqbert.dev to it.
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+x-app: &app
+  image: ${IMAGE:-ghcr.io/kinqbert/checkout-saga}:${TAG:-latest}
+  init: true
+  restart: unless-stopped
+  mem_limit: 256m
+  logging: *logging
+  depends_on:
+    db: { condition: service_healthy }
+    nats: { condition: service_healthy }
+    trace-relay: { condition: service_started }
+  environment: &env
+    NODE_ENV: production
+    DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/checkout-saga
+    NATS_URL: nats://nats:4222
+    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://trace-relay:4318/v1/traces
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: checkout-saga
+    volumes:
+      - dbdata:/var/lib/postgresql
+    restart: unless-stopped
+    mem_limit: 512m
+    logging: *logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+
+  nats:
+    image: nats:2.11-alpine
+    volumes:
+      - natsdata:/data
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *logging
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    healthcheck:
+      test: wget http://localhost:8222/healthz?js-enabled-only=true -q -S -O -
+      interval: 10s
+      retries: 10
+
+  trace-relay:
+    image: ${IMAGE:-ghcr.io/kinqbert/checkout-saga}:${TAG:-latest}
+    init: true
+    restart: unless-stopped
+    mem_limit: 128m
+    logging: *logging
+    command: ["node", "apps/trace-relay/dist/main.js"]
+
+  order:
+    <<: *app
+    command: ["node", "apps/order/dist/main.js"]
+    environment: { <<: *env, PORT: "3001" }
+
+  inventory:
+    <<: *app
+    command: ["node", "apps/inventory/dist/main.js"]
+    environment: { <<: *env, PORT: "3002" }
+
+  payment:
+    <<: *app
+    command: ["node", "apps/payment/dist/main.js"]
+    environment: { <<: *env, PORT: "3003" }
+
+  notify:
+    <<: *app
+    command: ["node", "apps/notify/dist/main.js"]
+    environment: { <<: *env, PORT: "3004" }
+
+  gateway:
+    <<: *app
+    command: ["node", "apps/gateway/dist/main.js"]
+    depends_on: [order, inventory, payment, notify, trace-relay]
+    environment:
+      <<: *env
+      PORT: "8080"
+      ORDER_URL: http://order:3001
+      INVENTORY_URL: http://inventory:3002
+      PAYMENT_URL: http://payment:3003
+      NOTIFY_URL: http://notify:3004
+      TRACE_RELAY_URL: http://trace-relay:4318
+      WEB_DIST: /repo/apps/web/dist
+    ports:
+      # Loopback only: Caddy on the host is the one public entry point.
+      - "127.0.0.1:${GATEWAY_PORT:-8090}:8080"
+    healthcheck:
+      test: wget -q -O - http://127.0.0.1:8080/healthz
+      interval: 10s
+      retries: 5
+
+volumes:
+  dbdata:
+  natsdata:

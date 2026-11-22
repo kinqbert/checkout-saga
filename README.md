@@ -151,7 +151,15 @@ Things to try:
 
 ## Deploying on one VPS
 
-The whole stack idles at about 370 MB of RAM (Node services about 50 MB each, NATS about 10 MB, Postgres about 35 MB), and every container has a memory limit. Put a TLS proxy such as Caddy in front of `:8080`, and disable response buffering for `/api/stream` (Server-Sent Events). The gateway already sends `X-Accel-Buffering: no` for nginx. Only the gateway port needs to be public. In production, remove the `ports:` entries for `db` and `nats`.
+The whole stack idles at about 370 MB of RAM (Node services about 50 MB each, NATS about 10 MB, Postgres about 35 MB), and every container has a memory limit.
+
+The live demo runs on one Hetzner VPS behind Caddy:
+
+- **CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): every push runs the build, the unit tests and the full end-to-end suite against the Docker stack. On `master`, the image that passed is pushed to GHCR (tagged with the commit sha) and deployed. The server never compiles anything.
+- **Deploy:** CI copies [`infra/docker-compose.prod.yaml`](infra/docker-compose.prod.yaml) to the server, rewrites its `.env` from the repo's GitHub secrets (the Postgres password) plus the commit sha, then runs `docker compose pull` and `up --wait`. Secrets reach the server over SSH's stdin, never on a command line. Rolling back is setting `TAG` to an older sha and running `up -d` again.
+- **Network:** nothing but the gateway is published, and only on `127.0.0.1:8090`. Postgres and NATS stay inside the compose network.
+- **TLS:** Caddy on the server proxies the domain to `127.0.0.1:8090` and gets the certificate itself. Caddy streams Server-Sent Events (`/api/stream`) without buffering, so the live map needs nothing extra. The gateway also sends `X-Accel-Buffering: no` for nginx.
+- **Public safety:** a per-IP rate limit on orders and lab switches, faults that expire after 60 s, and "Kill Order" can be armed at most once every 30 s across all visitors.
 
 ## Decisions
 

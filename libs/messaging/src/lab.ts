@@ -17,6 +17,19 @@ export type LabFault = (typeof LAB_FAULTS)[number];
 
 export const LAB_FAULT_TTL_MS = 60_000;
 
+/**
+ * "kill" restarts the process for every visitor, so on a public demo it can be
+ * armed at most once per this many ms, across all labs.
+ */
+export const KILL_COOLDOWN_MS = Number(process.env.LAB_KILL_COOLDOWN_MS ?? 30_000);
+
+/** Thrown when someone else armed a kill moments ago. */
+export class LabCooldownError extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super(`Order was restarted moments ago. Try again in ${retryAfterSeconds}s.`);
+  }
+}
+
 export interface LabSnapshot {
   /** ISO time the outage ends on its own, or null when the service is up */
   downUntil: string | null;
@@ -30,8 +43,15 @@ export interface LabSnapshot {
 
 export class LabFaults {
   private readonly labs = new Map<string, Partial<Record<LabFault, number>>>();
+  // Starts at boot: a kill restarts the process, so a restart counts as one.
+  private lastKillArmed = Date.now();
 
   set(lab: string, fault: LabFault, on: boolean): LabSnapshot {
+    if (fault === "kill" && on) {
+      const wait = this.lastKillArmed + KILL_COOLDOWN_MS - Date.now();
+      if (wait > 0) throw new LabCooldownError(Math.ceil(wait / 1000));
+      this.lastKillArmed = Date.now();
+    }
     const entry = this.labs.get(lab) ?? {};
     if (on) entry[fault] = Date.now() + LAB_FAULT_TTL_MS;
     else delete entry[fault];
