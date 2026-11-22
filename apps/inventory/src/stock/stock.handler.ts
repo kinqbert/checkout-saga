@@ -18,6 +18,7 @@ import {
   type Database,
   type Tx,
 } from "@checkout/messaging";
+import { withSpan } from "@checkout/telemetry";
 import {
   Inject,
   Injectable,
@@ -27,6 +28,7 @@ import {
 } from "@nestjs/common";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { inbox, outbox, products, reservations } from "../db/schema.js";
+import { seedLevel } from "../products/seed.js";
 import { BUS, DB } from "../infra.js";
 
 const CONSUMER = "inventory";
@@ -90,6 +92,22 @@ export class StockHandler implements OnApplicationBootstrap, BeforeApplicationSh
       .orderBy(asc(products.sku))
       .for("update");
     const bySku = new Map(rows.map((r) => [r.sku, r]));
+
+    // Regular products never run out: the supplier tops them back up to their
+    // normal level (at least what this order needs). Limited ones really can.
+    const replenish = items.filter((i) => {
+      const r = bySku.get(i.sku);
+      return r && !r.limited && r.stock < i.quantity;
+    });
+    if (replenish.length > 0) {
+      await withSpan("supplier restock", { attributes: { "inventory.skus": replenish.map((i) => i.sku).join(",") } }, async () => {
+        for (const i of replenish) {
+          const level = Math.max(seedLevel(i.sku), i.quantity);
+          await tx.update(products).set({ stock: level }).where(eq(products.sku, i.sku));
+          bySku.get(i.sku)!.stock = level;
+        }
+      });
+    }
 
     const unknown = skus.filter((s) => !bySku.has(s));
     const short = items.filter((i) => (bySku.get(i.sku)?.stock ?? 0) < i.quantity).map((i) => i.sku);

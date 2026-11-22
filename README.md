@@ -55,7 +55,7 @@ The state machine is a pure function, `transition(saga, event) → { saga, messa
 |---|---|---|
 | **gateway** | nothing | Public HTTP API and BFF, validation, per-IP rate limit, serves the web build, proxies the trace stream |
 | **order** | `orders` schema: orders, transitions, catalog replica | Saga orchestrator. Prices orders from its local catalog copy |
-| **inventory** | `inventory` schema: products, stock, reservations | Reserves and releases stock all-or-nothing. Owns and publishes the catalog |
+| **inventory** | `inventory` schema: products, stock, reservations | Reserves and releases stock all-or-nothing. Owns and publishes the catalog. Regular products are topped up by the "supplier" when they run short; only the limited sneakers can really sell out |
 | **payment** | `payments` schema | Fake card provider with a $500 limit (the decline path). Payment is the pivot step, so it never needs a refund |
 | **notify** | `notify` schema | Sends "e-mails" on confirmed or cancelled orders. It is **outside** the saga: a failed e-mail can't cancel a paid order |
 | **trace-relay** | in-memory ring buffer | Receives OTLP/HTTP JSON spans and fans them out to browsers over SSE |

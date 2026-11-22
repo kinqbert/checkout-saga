@@ -1,7 +1,7 @@
 import type { Item } from "@checkout/contracts";
 import { inboxTable, outboxTable } from "@checkout/messaging";
 import { sql } from "drizzle-orm";
-import { check, integer, jsonb, snakeCase, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, integer, jsonb, snakeCase, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const inventorySchema = snakeCase.schema("inventory");
 
@@ -13,6 +13,8 @@ export const products = inventorySchema.table(
     name: text().notNull(),
     price: integer().notNull(),
     stock: integer().notNull(),
+    /** Limited products run out for real; regular ones are replenished by the supplier. */
+    limited: boolean().notNull().default(false),
     updatedAt: timestamp({ withTimezone: true })
       .defaultNow()
       .notNull()
