@@ -17,11 +17,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 let provider: TracerProvider | undefined;
 
-/**
- * Wires OpenTelemetry for one service: W3C trace context, async-local context
- * propagation and an OTLP/HTTP exporter (pointed at trace-relay by default).
- * Call it first thing in main.ts.
- */
+// wires OpenTelemetry for one service (exporting to trace-relay). Call it first thing in main.ts.
 export function startTelemetry(serviceName: string): { shutdown(): Promise<void> } {
   if (provider) return provider;
 
@@ -33,15 +29,14 @@ export function startTelemetry(serviceName: string): { shutdown(): Promise<void>
     spanProcessors: [
       new BatchSpanProcessor({
         exporter: new OTLPTraceExporter({ url }),
-        // Short delay: the UI draws the saga live, 5s batching would feel broken.
+        // the UI draws sagas live; the default 5 s batching would feel broken.
         scheduledDelayMillis: 100,
       }),
     ],
   });
 
   context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
-  // Trace context plus W3C baggage: baggage carries demo settings (slow mode)
-  // across every hop, including the outbox and NATS headers.
+  // baggage carries the demo settings (slow mode, lab id) across every hop.
   propagation.setGlobalPropagator(
     new CompositePropagator({ propagators: [new W3CTraceContextPropagator(), new W3CBaggagePropagator()] }),
   );
@@ -51,12 +46,10 @@ export function startTelemetry(serviceName: string): { shutdown(): Promise<void>
 
 export const tracer = () => trace.getTracer("checkout-saga");
 
-/** Sends every finished span now; call before the process exits on purpose. */
 export async function flushTelemetry(): Promise<void> {
   await provider?.forceFlush().catch(() => undefined);
 }
 
-/** Runs `fn` inside a new active span, recording errors and always ending it. */
 export async function withSpan<T>(
   name: string,
   options: { kind?: SpanKind; attributes?: Attributes; parent?: Context },
@@ -88,24 +81,20 @@ export function markError(span: Span, err: unknown): void {
   });
 }
 
-/** Serialises the active trace context (traceparent) into a plain header map. */
 export function currentTraceHeaders(ctx: Context = context.active()): Record<string, string> {
   const carrier: Record<string, string> = {};
   propagation.inject(ctx, carrier);
   return carrier;
 }
 
-/** Restores a context from a header map produced by {@link currentTraceHeaders}. */
 export function contextFromHeaders(headers: Record<string, string | undefined>): Context {
   return propagation.extract(context.active(), headers);
 }
 
-/** Reads a W3C baggage entry from the active context. */
 export function baggageValue(key: string, ctx: Context = context.active()): string | undefined {
   return propagation.getBaggage(ctx)?.getEntry(key)?.value;
 }
 
-/** Runs `fn` with extra baggage entries, which every later hop inherits. */
 export function withBaggage<T>(entries: Record<string, string>, fn: () => T): T {
   const current = propagation.getBaggage(context.active()) ?? propagation.createBaggage();
   let next = current;
@@ -113,16 +102,11 @@ export function withBaggage<T>(entries: Record<string, string>, fn: () => T): T 
   return context.with(propagation.setBaggage(context.active(), next), fn);
 }
 
-/** Demo "slow mode": how long each service holds a message before handling it. */
 export const PACE_KEY = "demo.pace";
-/** Failure lab: the visitor's lab id, so faults apply to their orders only. */
 export const LAB_KEY = "demo.lab";
 export const SLOW_PACE_MS = 1000;
 
-/**
- * In slow mode (baggage demo.pace=slow), waits SLOW_PACE_MS inside its own
- * span, so the pause is visible in the trace. A no-op in real time.
- */
+// in slow mode, waits in its own span so the pause shows in the trace.
 export async function slowModeHold(): Promise<void> {
   if (baggageValue(PACE_KEY) !== "slow") return;
   await withSpan("demo: slow-mode hold", { attributes: { "demo.hold_ms": SLOW_PACE_MS } }, () =>
@@ -133,13 +117,7 @@ export async function slowModeHold(): Promise<void> {
 export const currentTraceId = (): string | undefined =>
   trace.getActiveSpan()?.spanContext().traceId;
 
-/**
- * Express/Nest middleware that opens a SERVER span per request, continuing a
- * trace when the caller sent a `traceparent` header.
- *
- * `continueOnly`: only trace requests that arrive with a trace context. Internal
- * services use it so the UI's polling reads do not each start a new trace.
- */
+// a SERVER span per request. `continueOnly` skips untraced requests, so UI polling starts no traces.
 export function httpTracing(
   opts: { ignore?: (path: string, method: string) => boolean; continueOnly?: boolean } = {},
 ) {

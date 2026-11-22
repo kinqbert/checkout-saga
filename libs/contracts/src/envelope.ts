@@ -1,6 +1,6 @@
 import * as z from "zod";
 
-/** Fields every message on the bus carries. */
+// fields every message on the bus carries.
 export const BaseEnvelope = z.object({
   id: z.uuid(),
   type: z.string(),
@@ -10,7 +10,7 @@ export const BaseEnvelope = z.object({
 });
 export type BaseEnvelope = z.infer<typeof BaseEnvelope>;
 
-/** A message that belongs to one checkout saga. */
+// a message that belongs to one checkout saga.
 export const Envelope = BaseEnvelope.extend({
   orderId: z.uuid(),
 });

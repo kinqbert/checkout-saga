@@ -1,6 +1,4 @@
-# Every push and PR: build and unit tests, then the end-to-end suite against
-# the real Docker stack. On master, the image that passed goes to GHCR and is
-# deployed to the VPS.
+# build, unit tests and the e2e suite on every push; on master, push the image and deploy it.
 name: ci
 
 on:
@@ -61,7 +59,7 @@ jobs:
         with:
           context: .
           push: true
-          # The server's CPU: linux/amd64 for CX/CPX/CCX, linux/arm64 for CAX.
+          # the server's CPU: linux/amd64 for CX/CPX/CCX, linux/arm64 for CAX.
           platforms: ${{ vars.DEPLOY_PLATFORM || 'linux/amd64' }}
           tags: |
             ${{ env.IMAGE }}:${{ github.sha }}
@@ -91,10 +89,7 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
           scp -P "$PORT" -i ~/.ssh/id_deploy infra/docker-compose.prod.yaml "$TARGET:$DIR/docker-compose.yaml"
-          # Secrets go over stdin, never on a command line (where `ps` would
-          # show them). The server's .env is rewritten from GitHub's secrets on
-          # every deploy; GHCR is logged in to with this job's short-lived token
-          # in a throwaway Docker config, leaving the server's own logins alone.
+          # secrets go over stdin (never visible to `ps`); GHCR login uses a throwaway Docker config.
           printf '%s\n%s\n' "$REGISTRY_TOKEN" "$POSTGRES_PASSWORD" | ssh -p "$PORT" -i ~/.ssh/id_deploy "$TARGET" "set -e; cd $DIR
             read -r token; read -r pgpass
             umask 077; printf 'POSTGRES_PASSWORD=%s\nTAG=%s\n' \"\$pgpass\" '$TAG' > .env

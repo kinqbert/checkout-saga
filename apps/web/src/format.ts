@@ -23,7 +23,7 @@ export const STATE_LABEL: Record<string, string> = {
 
 export const isTerminal = (state: string) => state === "CONFIRMED" || state === "CANCELLED";
 
-/** "checkout.evt.inventory.reserved" → "inventory.reserved" */
+// "checkout.evt.inventory.reserved" → "inventory.reserved"
 export const shortType = (type: string) => type.replace(/^checkout\.(cmd|evt)\./, "").replace(/^catalog\.evt\./, "catalog.");
 
 export type Tone = "ok" | "fail" | "comp" | "info";

@@ -31,7 +31,6 @@ import { Upstream, upstreams } from "./upstream.js";
 const ORDER_RATE = Number(process.env.ORDER_RATE_PER_SECOND ?? 100);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** Which experiments exist: the service a fault breaks, and how. */
 const LAB_FAULTS = {
   inventory: ["down", "crash"],
   payment: ["down", "slow"],
@@ -49,12 +48,10 @@ const LabChange = z
 
 const limitParam = (v?: string) => String(Math.min(Math.max(Number(v) || 20, 1), 100));
 
-/** Public API for the web UI. It validates input and fans out to internal services. */
 @Controller("api")
 export class ApiController implements BeforeApplicationShutdown {
-  /** Open SSE streams; closed on shutdown so the HTTP server can stop promptly. */
+  // open SSE streams, closed on shutdown so the server can stop promptly.
   private readonly streams = new Set<{ abort: AbortController; res: Response }>();
-  /** Per visitor (IP): bursts of up to ORDER_RATE orders, refilled at ORDER_RATE per second. */
   private readonly orderLimiter = new RateLimiter(ORDER_RATE, ORDER_RATE);
   private readonly adminLimiter = new RateLimiter(20, 2);
 
@@ -100,15 +97,13 @@ export class ApiController implements BeforeApplicationShutdown {
     if (!parsed.success) {
       throw new BadRequestException({ error: "invalid order", details: parsed.error.issues });
     }
-    // Slow mode rides along as W3C baggage, so every service downstream sees it.
-    // Only the gateway decides the value; anything else a client sends is dropped.
+    // slow mode and the lab id ride along as baggage; only the gateway sets it (client baggage is dropped).
     const call = () =>
       this.upstream.call<OrderView>("order", "/orders", {
         method: "POST",
         body: parsed.data,
         headers: key ? { "idempotency-key": key } : {},
       });
-    // The failure lab id rides along too, so faults hit this visitor's orders only.
     const baggage: Record<string, string> = { [PACE_KEY]: pace === "slow" ? "slow" : "realtime" };
     if (lab && UUID.test(lab)) baggage[LAB_KEY] = lab.toLowerCase();
     const { status, body: order } = await withBaggage(baggage, call);
@@ -116,7 +111,6 @@ export class ApiController implements BeforeApplicationShutdown {
     return order;
   }
 
-  /** Failure lab: this visitor's fault switches across Inventory, Payment and Order. */
   @Get("lab")
   async lab(@Headers("x-demo-lab") lab: string | undefined): Promise<unknown> {
     const id = this.labId(lab);
@@ -166,7 +160,6 @@ export class ApiController implements BeforeApplicationShutdown {
     return res?.ok ? res.json() : [];
   }
 
-  /** Pipes trace-relay's Server-Sent Events stream through to the browser. */
   @Get("stream")
   async stream(@Req() req: Request, @Res() res: Response): Promise<void> {
     const abort = new AbortController();

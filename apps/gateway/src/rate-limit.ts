@@ -4,12 +4,7 @@ interface HeaderSink {
   setHeader(name: string, value: string | number): unknown;
 }
 
-/**
- * In-memory token bucket per client IP: `capacity` requests at once, refilled
- * at `refillPerSecond`. Enough to keep a public demo on one VPS from being
- * flooded; a multi-instance deployment would keep the buckets in Redis or at
- * the edge.
- */
+// in-memory token bucket per IP; several instances would keep the buckets in Redis.
 export class RateLimiter {
   private buckets = new Map<string, { tokens: number; at: number }>();
 
@@ -18,7 +13,6 @@ export class RateLimiter {
     private readonly refillPerSecond: number,
   ) {}
 
-  /** Spends one token for `key`, or throws 429 with Retry-After when none is left. */
   take(key: string, res?: HeaderSink): void {
     const now = Date.now();
     const b = this.buckets.get(key) ?? { tokens: this.capacity, at: now };

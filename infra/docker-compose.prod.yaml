@@ -1,18 +1,5 @@
-# Production stack on one VPS. CI builds the image and pushes it to GHCR;
-# the server only pulls and runs it (see README, "Deploying").
-#
-# On the server, next to this file, a `.env` that CI writes on every deploy
-# from the repo's GitHub secrets:
-#   POSTGRES_PASSWORD=<the POSTGRES_PASSWORD secret>
-#   TAG=<the commit sha being deployed>
-#
-#   docker compose up -d --wait
-#
-# (CI copies this file to the server as docker-compose.yaml.)
-#
-# Nothing here is published to the internet: the gateway listens on
-# 127.0.0.1:8090 only (8080 is taken on the VPS), and Caddy (TLS) proxies
-# saga.kinqbert.dev to it.
+# production: CI copies this to the VPS with a .env (POSTGRES_PASSWORD, TAG) and runs it.
+# only the gateway is published, on loopback; Caddy proxies saga.kinqbert.dev to it.
 
 x-logging: &logging
   driver: json-file
@@ -105,7 +92,6 @@ services:
       TRACE_RELAY_URL: http://trace-relay:4318
       WEB_DIST: /repo/apps/web/dist
     ports:
-      # Loopback only: Caddy on the host is the one public entry point.
       - "127.0.0.1:${GATEWAY_PORT:-8090}:8080"
     healthcheck:
       test: wget -q -O - http://127.0.0.1:8080/healthz

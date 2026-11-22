@@ -17,11 +17,7 @@ import { sql } from "drizzle-orm";
 import { products } from "../db/schema.js";
 import { BUS, DB } from "../infra.js";
 
-/**
- * Keeps orders.products in sync with inventory's catalog. The upsert is
- * naturally idempotent and ignores events older than what is stored, so no
- * inbox is needed here.
- */
+// mirrors inventory's catalog; the upsert ignores older events, so no inbox is needed.
 @Injectable()
 export class CatalogConsumer implements OnApplicationBootstrap, BeforeApplicationShutdown {
   private readonly log = new Logger(CatalogConsumer.name);

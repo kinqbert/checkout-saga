@@ -1,6 +1,6 @@
 import type { TraceSpan } from "@checkout/contracts";
 
-// The subset of the OTLP/HTTP JSON encoding we read.
+// the subset of the OTLP/HTTP JSON encoding we read.
 interface AnyValue {
   stringValue?: string;
   intValue?: string | number;
@@ -51,7 +51,7 @@ function attributes(list: KeyValue[] = []): Record<string, string | number | boo
 
 const nanosToMs = (n: string | number) => Number(BigInt(n) / 1000n) / 1000;
 
-/** Flattens an OTLP export request into UI-friendly spans. */
+// flattens an OTLP export request into UI-friendly spans.
 export function flatten(req: OtlpTraceRequest): TraceSpan[] {
   const spans: TraceSpan[] = [];
   for (const rs of req.resourceSpans ?? []) {

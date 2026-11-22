@@ -25,10 +25,8 @@ import { BUS, DB } from "../infra.js";
 
 const CONSUMER = "notify";
 
-/**
- * Reacts to the saga's outcome. It sits outside the saga on purpose: a failed
- * e-mail must never cancel a paid order.
- */
+// reacts to the saga's outcome. It sits outside the saga on purpose: a failed
+// e-mail must never cancel a paid order.
 @Injectable()
 export class NotificationsService implements OnApplicationBootstrap, BeforeApplicationShutdown {
   private readonly log = new Logger(NotificationsService.name);

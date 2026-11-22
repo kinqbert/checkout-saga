@@ -5,7 +5,7 @@ export const paymentsSchema = snakeCase.schema("payments");
 
 export const paymentStatus = paymentsSchema.enum("payment_status", ["CAPTURED", "FAILED", "REFUNDED"]);
 
-/** At most one payment attempt per order (unique order_id). */
+// at most one payment attempt per order (unique order_id).
 export const payments = paymentsSchema.table("payments", {
   id: uuid().primaryKey(),
   orderId: uuid().notNull().unique(),

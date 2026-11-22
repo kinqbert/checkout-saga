@@ -2,9 +2,9 @@ import * as z from "zod";
 import { Envelope } from "../envelope.js";
 import { ErrorPayload } from "../shared.js";
 
-// COMMANDS
+// commands
 
-// EVENTS
+// events
 export const OrderConfirmedEvt = Envelope.extend({
   type: z.literal("checkout.evt.order.confirmed"),
   payload: z.object({}),
@@ -17,7 +17,7 @@ export const OrderCancelledEvt = Envelope.extend({
 });
 export type OrderCancelledEvt = z.infer<typeof OrderCancelledEvt>;
 
-// DISCRIMINATED UNIONS
+// discriminated unions
 export const OrderEvent = z.discriminatedUnion("type", [
   OrderConfirmedEvt,
   OrderCancelledEvt,

@@ -1,5 +1,5 @@
-// End-to-end check of every saga path, through the public gateway API.
-// Usage: GATEWAY_URL=http://localhost:8080 node scripts/e2e.mjs
+// end-to-end check of every saga path, through the public gateway API.
+// usage: GATEWAY_URL=http://localhost:8080 node scripts/e2e.mjs
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 

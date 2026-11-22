@@ -8,7 +8,7 @@ import { traceStore, useTraceVersion } from "./traceStore";
 import { Waterfall } from "./Waterfall";
 
 interface Props {
-  /** Phones: show only the state line until the visitor asks for details. */
+  // phones: show only the state line until the visitor asks for details.
   compact?: boolean;
   orders: OrderView[];
   selectedId: string;
@@ -26,7 +26,7 @@ export function OrderPanel({ compact = false, orders, selectedId, onSelect, onCl
 
   const terminal = order ? isTerminal(order.state) : false;
 
-  // The e-mail arrives just after the saga ends; look for it then.
+  // the e-mail arrives just after the saga ends; look for it then.
   useEffect(() => {
     setNote(undefined);
     if (!order || !terminal) return;
@@ -45,7 +45,7 @@ export function OrderPanel({ compact = false, orders, selectedId, onSelect, onCl
     };
   }, [order?.id, terminal]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Older orders may have scrolled out of the live buffer: fetch their trace once.
+  // older orders may have scrolled out of the live buffer: fetch their trace once.
   useEffect(() => {
     setFetched([]);
     if (!order?.traceId || !terminal) return;
@@ -112,7 +112,7 @@ export function OrderPanel({ compact = false, orders, selectedId, onSelect, onCl
       {!traceOpen && <SagaSteps order={order} />}
 
       {order.cancelReason && <p className="reason">{order.cancelReason}</p>}
-      {/* One closing line per order: the reason if it was cancelled, the receipt if confirmed. */}
+      {/* one closing line per order: the reason if it was cancelled, the receipt if confirmed. */}
       {!traceOpen && note && !order.cancelReason && (
         <p className="mail" title={note.message}>
           <span className="mono">notify</span> Receipt e-mailed

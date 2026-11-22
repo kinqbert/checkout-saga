@@ -1,11 +1,9 @@
 import * as z from "zod";
 import { BaseEnvelope } from "../envelope.js";
 
-// EVENTS
-/**
- * Published by inventory (the catalog owner) whenever a product is created or
- * its price/name changes. Consumers keep a local read model from it.
- */
+// events
+// published by inventory (the catalog owner) whenever a product is created or
+// its price/name changes. Consumers keep a local read model from it.
 export const ProductUpsertedEvt = BaseEnvelope.extend({
   type: z.literal("catalog.evt.product.upserted"),
   payload: z.object({

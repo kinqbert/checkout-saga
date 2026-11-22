@@ -6,10 +6,7 @@ export type StreamStatus = "connecting" | "live" | "offline";
 
 const MAX_TRACES = 300;
 
-/**
- * Holds spans streamed from trace-relay, grouped by trace. `live` is false for
- * the backlog sent on (re)connect, so the graph only animates new traffic.
- */
+// spans from trace-relay, by trace. `live` is false for the backlog sent on (re)connect.
 class TraceStore {
   private traces = new Map<string, TraceSpan[]>();
   private seen = new Set<string>();
@@ -51,7 +48,6 @@ class TraceStore {
     for (const l of this.listeners) l(fresh, live);
   }
 
-  /** Every span held right now (the latest traces), for counters starting late. */
   all(): TraceSpan[] {
     return [...this.traces.values()].flat();
   }

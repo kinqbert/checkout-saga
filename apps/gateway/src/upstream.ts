@@ -20,10 +20,8 @@ interface CallInit {
   headers?: Record<string, string>;
 }
 
-/**
- * fetch() to an internal service. Inside a traced request it adds a CLIENT
- * span and forwards `traceparent`; untraced reads stay untraced.
- */
+// fetch() to an internal service. Inside a traced request it adds a CLIENT
+// span and forwards `traceparent`; untraced reads stay untraced.
 @Injectable()
 export class Upstream {
   call<T>(service: keyof typeof upstreams, path: string, init: CallInit = {}): Promise<UpstreamResponse<T>> {

@@ -1,7 +1,7 @@
 import * as z from "zod";
 import { Item } from "./types/inventory.js";
 
-/** HTTP shapes shared by gateway, services and the web UI. Money is integer cents. */
+// HTTP shapes shared by gateway, services and the web UI. Money is integer cents.
 
 export const PlaceOrderRequest = z.object({
   items: z.array(Item).min(1).max(20),
@@ -28,7 +28,7 @@ export interface OrderView {
   lines: OrderLine[];
   cancelReason: string | null;
   traceId: string | null;
-  /** While the saga waits on another service: when it gives up (ISO), else null. */
+  // while the saga waits on another service: when it gives up (ISO), else null.
   deadlineAt: string | null;
   createdAt: string;
   updatedAt: string;

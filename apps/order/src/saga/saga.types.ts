@@ -47,22 +47,16 @@ export interface TransitionResult {
   messages: OutgoingMessage[];
 }
 
-/**
- * Raised by the order service itself (not a message) when a step's deadline
- * passes without an answer.
- */
+// raised by the order service itself (not a message) when a deadline passes.
 export interface SagaTimeout {
   type: "saga.timeout";
 }
 
 export type SagaEvent = InventoryEvent | PaymentEvent | SagaTimeout;
 
-/** Input the pure state machine can't make up itself. */
 export interface SagaContext {
-  /** ISO time the next step must answer by; sent with the command. */
   deadline: string;
 }
 
-/** States that wait on another service, and so carry a deadline. */
 export const WAITING_STATES = ["AWAITING_STOCK", "AWAITING_PAYMENT"] as const satisfies readonly SagaState[];
 export const isWaiting = (s: SagaState) => (WAITING_STATES as readonly SagaState[]).includes(s);

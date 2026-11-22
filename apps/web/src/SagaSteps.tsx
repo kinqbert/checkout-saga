@@ -9,17 +9,13 @@ export const STATE_TONE: Record<string, string> = {
   CANCELLED: "fail",
 };
 
-/**
- * Timeline entries that don't move the saga: a step that succeeded after the
- * saga had given up on it, being undone, and the refund confirming.
- */
+// timeline notes that don't move the saga: a late success being undone, a refund confirming.
 const NOTE: Record<string, string> = {
   "checkout.evt.inventory.reserved": "Stock reserved too late, released",
   "checkout.evt.payment.captured": "Payment arrived too late, refund sent",
   "checkout.evt.payment.refunded": "Late payment refunded",
 };
 
-/** What the saga is waiting for next. It never predicts the outcome. */
 function nextStep(state: string): string | undefined {
   switch (state) {
     case "AWAITING_STOCK":
@@ -33,11 +29,6 @@ function nextStep(state: string): string | undefined {
   }
 }
 
-/**
- * The saga's states as a vertical list of dots, with time since the order
- * was placed. Used by the order panel; new
- * steps slide in as they land.
- */
 export function SagaSteps({ order }: { order: OrderView }) {
   const transitions = order.transitions ?? [];
   const t0 = transitions[0] ? new Date(transitions[0].at).getTime() : 0;

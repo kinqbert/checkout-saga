@@ -5,11 +5,6 @@ import { Close } from "./icons";
 const secondsLeft = (until: string | null, now: number) =>
   until ? Math.min(60, Math.max(0, Math.ceil((new Date(until).getTime() - now) / 1000))) : 0;
 
-/**
- * Failure lab: five guided experiments. Every switch applies to this
- * visitor's orders only (killing Order restarts it for everyone, briefly),
- * and faults end on their own after 60 s.
- */
 export function LabSheet({
   state,
   onChange,
@@ -44,7 +39,6 @@ export function LabSheet({
     }
   }
 
-  /** A fault that stays on for up to 60 s. */
   const timed = (service: LabService, fault: "down" | "slow", title: string, watch: string, active: string, labels: [string, string]) => {
     const until = fault === "down" ? state?.[service]?.downUntil : state?.[service]?.slowUntil;
     const left = secondsLeft(until ?? null, now);
@@ -62,7 +56,6 @@ export function LabSheet({
     );
   };
 
-  /** A one-shot fault: it fires on the next order, then disarms. */
   const oneShot = (service: LabService, fault: "crash" | "kill", title: string, watch: string, active: string) => {
     const snap = state?.[service];
     const armed = !!(fault === "crash" ? snap?.crashArmed : snap?.killArmed);

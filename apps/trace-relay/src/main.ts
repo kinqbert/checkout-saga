@@ -2,11 +2,7 @@ import type { TraceSpan } from "@checkout/contracts";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { flatten, type OtlpTraceRequest } from "./otlp.js";
 
-/**
- * trace-relay is a tiny OTLP/HTTP receiver. Services export spans here, and the
- * relay fans them out to browsers over Server-Sent Events. It keeps a bounded
- * ring buffer so a page that just opened can draw recent sagas.
- */
+// a tiny OTLP/HTTP receiver that fans spans out to browsers over SSE, with a ring buffer for new pages.
 const PORT = Number(process.env.PORT ?? 4318);
 const BUFFER_SIZE = Number(process.env.TRACE_BUFFER_SIZE ?? 5000);
 const BACKLOG_ON_CONNECT = 600;
@@ -86,7 +82,7 @@ const server = createServer((req, res) => {
   json(res, 404, { error: "not found" });
 });
 
-// Comment frames keep proxies from closing idle SSE connections.
+// comment frames keep proxies from closing idle SSE connections.
 setInterval(() => {
   for (const res of clients) res.write(`: ping\n\n`);
 }, 15_000).unref();

@@ -13,20 +13,20 @@ const app = await NestFactory.create<NestExpressApplication>(AppModule, {
 });
 app.set("trust proxy", "loopback, linklocal, uniquelocal");
 app.disable("x-powered-by");
-// Baggage is set by the gateway only (see slow mode); never trust a client's.
+// baggage is set by the gateway only (see slow mode); never trust a client's.
 app.use((req: { headers: Record<string, unknown> }, _res: unknown, next: () => void) => {
   delete req.headers.baggage;
   next();
 });
 app.use(
   httpTracing({
-    // Only API writes start traces: reads are the UI polling, and would drown the
+    // only API writes start traces: reads are the UI polling, and would drown the
     // interesting traces (a checkout) in noise.
     ignore: (path, method) => !path.startsWith("/api/") || method === "GET",
   }),
 );
 
-// Serves the built web UI, with a fallback to index.html for client routes.
+// serves the built web UI, with a fallback to index.html for client routes.
 const webDist = process.env.WEB_DIST ?? resolve(import.meta.dirname, "../../web/dist");
 if (existsSync(webDist)) {
   app.useStaticAssets(webDist, { index: "index.html", maxAge: "1h" });

@@ -1,5 +1,5 @@
-# Full stack: `pnpm docker-up` (or `docker compose -f infra/docker-compose.yaml up -d --build`).
-# Infra only, for running services with `pnpm dev`: `pnpm infra-up`.
+# full stack: `pnpm docker-up` (or `docker compose -f infra/docker-compose.yaml up -d --build`).
+# infra only, for running services with `pnpm dev`: `pnpm infra-up`.
 
 x-app: &app
   image: checkout-saga:local

@@ -7,10 +7,8 @@ export interface Database<TSchema = unknown> {
   pool: pg.Pool;
 }
 
-/**
- * Opens a pool and applies the service's migrations. Every service shares one
- * Postgres but owns its own schema, so each gets its own migrations table.
- */
+// opens a pool and applies the service's migrations. Every service shares one
+// Postgres but owns its own schema, so each gets its own migrations table.
 export async function openDatabase(opts: {
   service: string;
   migrationsFolder: string;

@@ -5,7 +5,7 @@ import { boolean, check, integer, jsonb, snakeCase, text, timestamp, uuid } from
 
 export const inventorySchema = snakeCase.schema("inventory");
 
-/** Inventory owns the catalog (name, price) and the stock levels. */
+// Inventory owns the catalog (name, price) and the stock levels.
 export const products = inventorySchema.table(
   "products",
   {
@@ -13,7 +13,7 @@ export const products = inventorySchema.table(
     name: text().notNull(),
     price: integer().notNull(),
     stock: integer().notNull(),
-    /** Limited products run out for real; regular ones are replenished by the supplier. */
+    // limited products run out for real; regular ones are replenished by the supplier.
     limited: boolean().notNull().default(false),
     updatedAt: timestamp({ withTimezone: true })
       .defaultNow()
@@ -25,7 +25,7 @@ export const products = inventorySchema.table(
 
 export const reservationStatus = inventorySchema.enum("reservation_status", ["RESERVED", "RELEASED"]);
 
-/** One reservation per order, so release knows what to put back. */
+// one reservation per order, so release knows what to put back.
 export const reservations = inventorySchema.table("reservations", {
   orderId: uuid().primaryKey(),
   items: jsonb().$type<Item[]>().notNull(),

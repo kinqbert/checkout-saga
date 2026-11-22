@@ -20,15 +20,11 @@ function save(ids: string[]) {
   try {
     localStorage.setItem(KEY, JSON.stringify(ids));
   } catch {
-    /* private mode: orders just aren't remembered across reloads */
+    // private mode: orders just aren't remembered across reloads
   }
 }
 
-/**
- * Two fetches of one order can race (the poll and the refetch a saga step
- * triggers), and the older answer may arrive last. A saga only moves forward,
- * so keep whichever view has seen more transitions.
- */
+// two fetches can race; a saga only moves forward, so keep the view with more transitions.
 function newer(prev: OrderView | undefined, next: OrderView): OrderView {
   if (!prev) return next;
   const p = prev.transitions?.length ?? 0;
@@ -43,21 +39,16 @@ function merge(orders: Record<string, OrderView>, fresh: OrderView[]): Record<st
   return out;
 }
 
-/**
- * The visitor's own orders, newest first, remembered in this browser. Each one
- * is polled until its saga finishes, so the panel follows it live.
- */
+// the visitor's orders, newest first, remembered in this browser and polled until they finish.
 export function useMyOrders() {
   const [ids, setIds] = useState<string[]>(load);
   const [orders, setOrders] = useState<Record<string, OrderView>>({});
   const ordersRef = useRef(orders);
   ordersRef.current = orders;
 
-  // Every order placed in this session counts as yours for the map (colour,
-  // spinners), even after it drops out of the 5 shown in the panel.
+  // every order placed this session counts as yours, even after it drops out of the panel.
   const ownTraces = useRef(new Set<string>());
 
-  /** Marks a trace as yours before its request leaves (the browser chose the id). */
   const claim = useCallback((traceId: string) => {
     ownTraces.current.add(traceId);
     if (ownTraces.current.size > 1000) ownTraces.current.delete(ownTraces.current.values().next().value!);
@@ -73,8 +64,7 @@ export function useMyOrders() {
     });
   }, [claim]);
 
-  // Refetch an order the moment its saga moves (an order-service consumer span
-  // for one of our traces), so the panel keeps time with the dots on the map.
+  // refetch the moment a saga moves, so the panel keeps time with the map.
   useEffect(() => {
     const pendingFetch = new Map<string, ReturnType<typeof setTimeout>>();
     const unsub = traceStore.subscribe((spans) => {
@@ -107,7 +97,7 @@ export function useMyOrders() {
       if (stop) return;
       const fresh = results.filter((o): o is OrderView => !!o);
       if (fresh.length) setOrders((o) => merge(o, fresh));
-      // Forget orders the server no longer knows (e.g. the demo database was reset).
+      // the server forgot it (e.g. the demo database was reset).
       const gone = pending.filter((id, i) => !results[i] && !ordersRef.current[id]);
       if (gone.length) setIds((prev) => { const next = prev.filter((x) => !gone.includes(x)); save(next); return next; });
       timer = setTimeout(tick, pending.length ? 600 : 3000);
@@ -120,7 +110,6 @@ export function useMyOrders() {
   }, [ids]);
 
   const list = ids.map((id) => orders[id]).filter((o): o is OrderView => !!o);
-  // Orders restored from a previous visit count as yours too.
   for (const o of list) if (o.traceId) ownTraces.current.add(o.traceId);
   return { list, add, claim, traceIds: ownTraces.current };
 }

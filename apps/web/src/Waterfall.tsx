@@ -1,7 +1,7 @@
 import type { TraceSpan } from "@checkout/contracts";
 import { ms } from "./format";
 
-/** Spans of one trace as a timeline, nested by parent. */
+// spans of one trace as a timeline, nested by parent.
 export function Waterfall({ spans }: { spans: TraceSpan[] }) {
   if (spans.length === 0) return <p className="muted small">Waiting for spans…</p>;
 

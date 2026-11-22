@@ -10,15 +10,8 @@ import {
   type StreamConfig,
 } from "@nats-io/jetstream";
 
-/**
- * CHECKOUT carries saga commands and events. It uses limits retention (not
- * work-queue) so several consumers can read the same subject, and a 2 minute
- * duplicate window so a relay that republishes after a crash is deduplicated
- * by message id.
- *
- * CATALOG keeps only the latest message per product subject, which makes it
- * a compacted log: a new consumer can rebuild a full product read model.
- */
+// CHECKOUT: limits retention (several consumers per subject) and a 2 min duplicate window for republishes.
+// CATALOG: latest message per product only, a compacted log a new consumer can rebuild from.
 export const Streams = {
   checkout: {
     name: "CHECKOUT",
@@ -59,7 +52,7 @@ export async function connectBus(name: string): Promise<Bus> {
   return { nc, js: jetstream(nc), jsm };
 }
 
-/** Idempotently creates or updates the streams. Every service calls it on boot. */
+// creates or updates the streams; every service calls it on boot.
 export async function ensureStreams(jsm: JetStreamManager): Promise<void> {
   for (const cfg of Object.values(Streams)) {
     try {
@@ -69,7 +62,6 @@ export async function ensureStreams(jsm: JetStreamManager): Promise<void> {
       try {
         await jsm.streams.add(cfg);
       } catch (err) {
-        // Another service may have created it between our info() and add().
         await jsm.streams.info(cfg.name).catch(() => {
           throw err;
         });

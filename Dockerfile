@@ -1,4 +1,4 @@
-# One image for every service; compose picks the entrypoint per service.
+# one image for every service; compose picks the entrypoint per service.
 FROM node:24-alpine AS build
 RUN corepack enable
 WORKDIR /repo

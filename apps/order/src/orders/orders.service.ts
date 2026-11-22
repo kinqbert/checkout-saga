@@ -37,7 +37,6 @@ export function toView(row: OrderRow): OrderView {
   };
 }
 
-/** Same sku twice in one request becomes one line. */
 function mergeItems(items: Item[]): Item[] {
   const bySku = new Map<string, number>();
   for (const { sku, quantity } of items) bySku.set(sku, (bySku.get(sku) ?? 0) + quantity);
@@ -55,11 +54,7 @@ export class OrdersService {
     return this.database.db;
   }
 
-  /**
-   * Prices the order from the local catalog replica, then writes the order
-   * row, its first transition and the saga's first command in ONE transaction.
-   * Nothing is published here; the outbox relay does that after commit.
-   */
+  // writes the order, its first transition and first command in one transaction; the relay publishes.
   async placeOrder(
     requested: Item[],
     idempotencyKey?: string,
@@ -69,8 +64,7 @@ export class OrdersService {
       if (existing) return { order: existing, created: false };
     }
 
-    // Slow mode: the HTTP hop from the gateway takes a visible second too,
-    // so the first command is published after it, not alongside it.
+    // slow mode: the HTTP hop takes a visible second too.
     await slowModeHold();
 
     const items = mergeItems(requested);
@@ -114,7 +108,7 @@ export class OrdersService {
           })
           .onConflictDoNothing({ target: orders.idempotencyKey })
           .returning();
-        // A concurrent request with the same key won the race.
+        // a concurrent request with the same key won the race.
         if (!row) return undefined;
 
         await tx

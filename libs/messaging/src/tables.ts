@@ -11,12 +11,7 @@ import {
   type PgSchema,
 } from "drizzle-orm/pg-core";
 
-/**
- * Transactional outbox: a service writes its state change and the messages it
- * wants to send in the same transaction; the relay publishes them afterwards.
- * `headers` keeps the W3C trace context of the writer so the trace continues
- * across the asynchronous hop.
- */
+// transactional outbox: messages written with the state change, published later by the relay.
 export function outboxTable(schema: PgSchema<string>) {
   return schema.table(
     "outbox",
@@ -33,10 +28,7 @@ export function outboxTable(schema: PgSchema<string>) {
   );
 }
 
-/**
- * Inbox: one row per (message, consumer) that was processed. Inserting the
- * row in the same transaction as the side effects makes redelivery harmless.
- */
+// inbox: one row per processed (message, consumer), written with the side effects.
 export function inboxTable(schema: PgSchema<string>) {
   return schema.table(
     "inbox",

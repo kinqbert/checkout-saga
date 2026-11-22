@@ -1,8 +1,4 @@
-/**
- * Demo catalog. Prices in cents. Regular products are replenished by the
- * supplier whenever they run short, so "Place an order" always succeeds.
- * Only the sneakers are limited, so "Out of stock" always has something to hit.
- */
+// demo catalog, prices in cents. Regular products get restocked; only the sneakers can sell out.
 export const SEED_PRODUCTS = [
   { sku: "tee", name: "Logo T-shirt", price: 2400, stock: 50, limited: false },
   { sku: "mug", name: "Enamel mug", price: 1200, stock: 40, limited: false },

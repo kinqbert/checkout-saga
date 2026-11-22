@@ -23,7 +23,7 @@ const toView = (p: ProductRow): ProductView => ({
   stock: p.stock,
 });
 
-/** Every catalog change goes out as an event so other services can replicate it. */
+// every catalog change goes out as an event so other services can replicate it.
 function upserted(p: ProductRow) {
   const env = plainEnvelope<Pick<ProductUpsertedEvt, "type" | "payload">>({
     type: "catalog.evt.product.upserted",
@@ -41,7 +41,7 @@ export class ProductsService implements OnApplicationBootstrap {
     private readonly relay: OutboxRelay,
   ) {}
 
-  /** Seeds the demo catalog on first boot and announces it. */
+  // seeds the demo catalog on first boot and announces it.
   async onApplicationBootstrap() {
     const inserted = await this.database.db.transaction(async (tx: Tx) => {
       const rows = await tx.insert(products).values([...SEED_PRODUCTS]).onConflictDoNothing().returning();
@@ -59,7 +59,7 @@ export class ProductsService implements OnApplicationBootstrap {
     return rows.map(toView);
   }
 
-  /** Demo helper: puts stock back to the seed levels. */
+  // demo helper: puts stock back to the seed levels.
   async restock(): Promise<ProductView[]> {
     await this.database.db.transaction(async (tx) => {
       for (const p of SEED_PRODUCTS) {
@@ -69,7 +69,7 @@ export class ProductsService implements OnApplicationBootstrap {
     return this.list();
   }
 
-  /** Changes a price and publishes it; the order service's replica follows. */
+  // changes a price and publishes it; the order service's replica follows.
   async setPrice(sku: string, price: number): Promise<ProductView | undefined> {
     const row = await this.database.db.transaction(async (tx) => {
       const [updated] = await tx

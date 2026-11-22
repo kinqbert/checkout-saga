@@ -31,17 +31,11 @@ import { isWaiting, type CheckoutSaga, type SagaEvent } from "./saga.types.js";
 const SagaEventSchema = z.union([InventoryEvent, PaymentEvent]);
 const CONSUMER = "order-saga";
 
-/** How long the saga waits for inventory or payment to answer before giving up. */
 export const STEP_TIMEOUT_MS = Number(process.env.SAGA_STEP_TIMEOUT_MS ?? 20_000);
 
 type OrderRow = typeof orders.$inferSelect;
 
-/**
- * The I/O shell around the pure state machine: for every inventory/payment
- * event it loads the saga, calls transition(), and stores the new state plus
- * the next commands in one transaction (inbox row included, so a redelivered
- * event is a no-op). SagaTimeouts feeds it timeouts the same way.
- */
+// the I/O shell around the pure state machine: one transaction per event, inbox included.
 @Injectable()
 export class SagaRunner implements OnApplicationBootstrap, BeforeApplicationShutdown {
   private readonly log = new Logger(SagaRunner.name);
@@ -86,12 +80,7 @@ export class SagaRunner implements OnApplicationBootstrap, BeforeApplicationShut
     if (wrote) this.relay.nudge();
   }
 
-  /**
-   * Runs one event through the state machine for a locked order row and
-   * stores the outcome: new state, its deadline, the timeline entry and the
-   * next messages. A late reply can produce messages without a new state
-   * (a compensation); those are stored too. Returns whether anything was written.
-   */
+  // applies one event to a locked order row. Returns whether anything was written.
   async apply(tx: Tx, row: OrderRow, event: SagaEvent, causationId?: string): Promise<boolean> {
     const saga: CheckoutSaga = {
       orderId: row.id,
@@ -104,8 +93,7 @@ export class SagaRunner implements OnApplicationBootstrap, BeforeApplicationShut
     const result = transition(saga, event, { deadline: deadline.toISOString() });
     const moved = result.saga.state !== saga.state;
 
-    // A late success being undone, or a refund confirming, doesn't move the
-    // saga but belongs on its timeline.
+    // a late success being undone, or a refund confirming, still goes on the timeline.
     const noted = !moved && (result.messages.length > 0 || event.type === "checkout.evt.payment.refunded");
     if (!moved && !noted) {
       this.log.warn(`ignored ${event.type} for order ${row.id} in state ${row.state}`);
@@ -133,7 +121,7 @@ export class SagaRunner implements OnApplicationBootstrap, BeforeApplicationShut
     } else {
       if (result.messages.length > 0)
         span?.addEvent(`late ${event.type} after the saga stopped waiting: compensating`);
-      // Same state on both ends: the UI shows it as a note, not a step.
+      // from == to: the UI shows it as a note, not a step.
       await tx.insert(orderTransitions).values({
         orderId: row.id,
         fromState: saga.state,

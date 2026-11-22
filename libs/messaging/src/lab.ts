@@ -1,29 +1,13 @@
-/**
- * Failure lab: per-visitor fault switches, owned by the service they break.
- *
- * A visitor's orders carry `demo.lab=<id>` in W3C baggage. When that lab has
- * a fault switched on here, the service misbehaves for those messages only;
- * every other visitor's traffic is untouched (except "kill", which really
- * restarts the process). Faults expire on their own, so nothing stays broken
- * after a visitor leaves.
- *
- * - down:  refuse the visitor's messages (they are redelivered every second)
- * - slow:  the external provider answers only after the order's deadline
- * - crash: one-shot; commit the work, then "crash" before acking
- * - kill:  one-shot; finish and ack the step, then really exit the process
- */
+// per-visitor faults: orders carry `demo.lab=<id>` in baggage and only that visitor's messages
+// misbehave (except "kill", a real restart). Faults expire on their own.
 export const LAB_FAULTS = ["down", "slow", "crash", "kill"] as const;
 export type LabFault = (typeof LAB_FAULTS)[number];
 
 export const LAB_FAULT_TTL_MS = 60_000;
 
-/**
- * "kill" restarts the process for every visitor, so on a public demo it can be
- * armed at most once per this many ms, across all labs.
- */
+// a kill restarts the process for everyone, so it's rate limited across all labs.
 export const KILL_COOLDOWN_MS = Number(process.env.LAB_KILL_COOLDOWN_MS ?? 30_000);
 
-/** Thrown when someone else armed a kill moments ago. */
 export class LabCooldownError extends Error {
   constructor(readonly retryAfterSeconds: number) {
     super(`Order was restarted moments ago. Try again in ${retryAfterSeconds}s.`);
@@ -31,19 +15,15 @@ export class LabCooldownError extends Error {
 }
 
 export interface LabSnapshot {
-  /** ISO time the outage ends on its own, or null when the service is up */
   downUntil: string | null;
-  /** ISO time the slow provider is fast again, or null */
   slowUntil: string | null;
-  /** the next message handled will "crash" before it is acknowledged */
   crashArmed: boolean;
-  /** the process exits right after the next message is handled */
   killArmed: boolean;
 }
 
 export class LabFaults {
   private readonly labs = new Map<string, Partial<Record<LabFault, number>>>();
-  // Starts at boot: a kill restarts the process, so a restart counts as one.
+  // starts at boot: a kill restarts the process, so a restart counts as one.
   private lastKillArmed = Date.now();
 
   set(lab: string, fault: LabFault, on: boolean): LabSnapshot {
@@ -79,12 +59,10 @@ export class LabFaults {
     return this.until(lab, "slow") !== undefined;
   }
 
-  /** One-shot: true once if a crash is armed for this lab, then disarms. */
   takeCrash(lab: string): boolean {
     return this.take(lab, "crash");
   }
 
-  /** One-shot: true once if a kill is armed for this lab, then disarms. */
   takeKill(lab: string): boolean {
     return this.take(lab, "kill");
   }

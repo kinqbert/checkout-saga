@@ -34,7 +34,6 @@ import { BUS, DB } from "../infra.js";
 
 const CONSUMER = "inventory";
 
-/** Handles reserve/release commands from the order saga. */
 @Injectable()
 export class StockHandler implements OnApplicationBootstrap, BeforeApplicationShutdown {
   private readonly log = new Logger(StockHandler.name);
@@ -83,10 +82,9 @@ export class StockHandler implements OnApplicationBootstrap, BeforeApplicationSh
     if (wrote) this.relay.nudge();
   }
 
-  /** All-or-nothing: either every line is reserved or none is. */
+  // all-or-nothing: every line is reserved or none is.
   private async reserve(tx: Tx, cmd: ReserveStockCmd): Promise<void> {
-    // The order stopped waiting (it timed out and cancelled): reserving now
-    // would hold stock nobody will ever release.
+    // the order timed out: reserving now would hold stock nobody releases.
     if (cmd.payload.deadline && Date.parse(cmd.payload.deadline) < Date.now()) {
       const payload = { reason: "the order stopped waiting for stock", skus: [] };
       await this.emit(tx, { type: "checkout.evt.inventory.rejected", payload }, cmd);
@@ -94,7 +92,7 @@ export class StockHandler implements OnApplicationBootstrap, BeforeApplicationSh
     }
     const items: Item[] = cmd.payload.items;
     const skus = items.map((i) => i.sku);
-    // Lock in a stable order so two concurrent reservations cannot deadlock.
+    // lock in a stable order so two concurrent reservations cannot deadlock.
     const rows = await tx
       .select()
       .from(products)
@@ -103,8 +101,7 @@ export class StockHandler implements OnApplicationBootstrap, BeforeApplicationSh
       .for("update");
     const bySku = new Map(rows.map((r) => [r.sku, r]));
 
-    // Regular products never run out: the supplier tops them back up to their
-    // normal level (at least what this order needs). Limited ones really can.
+    // the "supplier" tops regular products back up; only limited ones can sell out.
     const replenish = items.filter((i) => {
       const r = bySku.get(i.sku);
       return r && !r.limited && r.stock < i.quantity;
@@ -141,7 +138,7 @@ export class StockHandler implements OnApplicationBootstrap, BeforeApplicationSh
     await this.emit(tx, { type: "checkout.evt.inventory.reserved", payload: {} }, cmd);
   }
 
-  /** Compensation. Safe to run when nothing was reserved: it still confirms. */
+  // compensation; safe when nothing was reserved (it still confirms).
   private async release(tx: Tx, cmd: ReleaseStockCmd): Promise<void> {
     const [reservation] = await tx
       .update(reservations)

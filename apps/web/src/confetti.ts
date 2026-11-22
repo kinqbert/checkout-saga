@@ -1,13 +1,9 @@
-/**
- * A small, dependency-free confetti burst inside a canvas: it fills its
- * parent, shoots up from the bottom centre and falls back within the box.
- * Skipped for visitors who prefer reduced motion. Returns a cleanup.
- */
+// a confetti burst inside a canvas, from the bottom centre. Returns a cleanup.
 export function confettiIn(canvas: HTMLCanvasElement): () => void {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return () => {};
   const w = canvas.offsetWidth;
   const h = canvas.offsetHeight;
-  // The map is zoomed by a CSS transform, so draw at 2x to stay crisp.
+  // the map is zoomed by a CSS transform, so draw at 2x to stay crisp.
   const dpr = 2;
   canvas.width = w * dpr;
   canvas.height = h * dpr;
@@ -43,7 +39,6 @@ export function confettiIn(canvas: HTMLCanvasElement): () => void {
       p.x += p.vx;
       p.y += p.vy;
       p.rot += p.vr;
-      // Bounce off the card's sides so it stays a burst inside the card.
       if (p.x < 0 || p.x > w) p.vx *= -0.6;
       ctx.save();
       ctx.translate(p.x, p.y);

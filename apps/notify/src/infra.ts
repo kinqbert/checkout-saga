@@ -6,7 +6,7 @@ export const SERVICE = "notify";
 export const DB = Symbol("DB");
 export const BUS = Symbol("BUS");
 
-/** Notify only consumes, so it needs no outbox relay. */
+// Notify only consumes, so it needs no outbox relay.
 @Injectable()
 class Lifecycle implements OnApplicationShutdown {
   constructor(

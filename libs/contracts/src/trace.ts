@@ -1,4 +1,4 @@
-/** A finished span, flattened by trace-relay and streamed to the web UI. */
+// a finished span, flattened by trace-relay and streamed to the web UI.
 export interface TraceSpan {
   traceId: string;
   spanId: string;
@@ -12,7 +12,7 @@ export interface TraceSpan {
   attributes: Record<string, string | number | boolean>;
 }
 
-/** Span attribute keys the services set so the UI can draw the saga. */
+// span attribute keys the services set so the UI can draw the saga.
 export const TraceAttr = {
   orderId: "checkout.order_id",
   messageType: "messaging.message.type",

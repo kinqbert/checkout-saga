@@ -1,10 +1,5 @@
-// Load test: places orders at a fixed rate and follows each saga to the end.
-// Usage: node scripts/load.mjs [--rate 100] [--seconds 10] [--url http://localhost:8080]
-//
-// Open-loop: requests are sent on schedule whether or not earlier ones have
-// answered, so a slow server shows up as latency instead of hiding behind
-// back-pressure. All requests come from one IP, so the per-visitor rate limit
-// applies to the whole run.
+// open-loop load test: orders on a fixed schedule, each saga followed to the end.
+// usage: node scripts/load.mjs [--rate 100] [--seconds 10] [--url http://localhost:8080]
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
@@ -16,7 +11,6 @@ const RATE = Number(arg("rate", 100));
 const SECONDS = Number(arg("seconds", 10));
 const BASE = arg("url", process.env.GATEWAY_URL ?? "http://localhost:8080");
 
-// A realistic mix: mostly small orders, some over the card limit.
 const BASKETS = [
   [{ sku: "mug", quantity: 1 }],
   [{ sku: "tee", quantity: 1 }, { sku: "cap", quantity: 1 }],
@@ -41,10 +35,7 @@ async function post(path, body, headers = {}) {
   return { status: res.status, body: await res.json().catch(() => null) };
 }
 
-// The demo's seed stock (a few dozen per product) runs out within a second,
-// after which every order is a quick "out of stock" rejection. For a fair
-// test, raise stock straight in the local database (no public API for it);
-// the API restock at the end puts the demo levels back.
+// seed stock runs out within a second, so raise it in the local DB; the restock at the end resets it.
 function setDeepStock() {
   try {
     execFileSync("docker", ["compose", "-f", "infra/docker-compose.yaml", "exec", "-T", "db",
@@ -86,7 +77,6 @@ for (let i = 0; i < total; i++) {
 await Promise.all(inflight);
 const sendSeconds = (performance.now() - started) / 1000;
 
-// Follow every accepted saga until it reaches CONFIRMED or CANCELLED.
 const done = new Map();
 const deadline = Date.now() + 60_000;
 let pending = [...accepted];
@@ -103,7 +93,6 @@ while (pending.length && Date.now() < deadline) {
 }
 const finished = performance.now();
 
-// Saga time from the saga's own transition log (all timestamps from Postgres).
 const sagaMs = [...done.values()].map((v) => {
   const t = (v.transitions ?? []).map((x) => +new Date(x.at));
   return t.length ? Math.max(...t) - Math.min(...t) : NaN;

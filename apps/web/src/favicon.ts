@@ -1,11 +1,6 @@
 import { useEffect } from "react";
 
-/**
- * The favicon is one dot, the same one that marks your messages on the map,
- * and it follows your latest order: blue before you order, pulsing while the
- * saga runs (amber while it gives stock back), then green or red. So a
- * background tab still shows how the order ended.
- */
+// the favicon is a dot that follows your latest order, so a background tab shows how it ended.
 const COLOR: Record<string, string> = {
   idle: "#3b82f6",
   AWAITING_STOCK: "#3b82f6",
@@ -31,14 +26,13 @@ function link(): HTMLLinkElement {
   return el;
 }
 
-/** Keeps the favicon in step with `state` (your latest order's saga state). */
 export function useFavicon(state: string | undefined): void {
   useEffect(() => {
     const color = COLOR[state ?? "idle"] ?? COLOR.idle!;
     const el = link();
     const still = dot(color, 11);
     el.href = still;
-    // Browsers don't animate favicons, so a running saga swaps two frames.
+    // browsers don't animate favicons, so swap two frames.
     if (!state || !RUNNING.has(state)) return;
     const soft = dot(color, 8, 0.55);
     let on = false;

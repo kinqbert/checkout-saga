@@ -2,19 +2,19 @@ import * as z from "zod";
 import { Envelope } from "../envelope.js";
 import { ErrorPayload } from "../shared.js";
 
-// GENERAL
+// general
 export const Item = z.object({
   sku: z.string().min(1),
   quantity: z.int().min(1),
 });
 export type Item = z.infer<typeof Item>;
 
-// COMMAND SCHEMAS
+// command schemas
 export const ReserveStockCmd = Envelope.extend({
   type: z.literal("checkout.cmd.inventory.reserve"),
   payload: z.object({
     items: z.array(Item).min(1),
-    /** When the order stops waiting for an answer. Past it, inventory refuses to reserve. */
+    // when the order stops waiting for an answer. Past it, inventory refuses to reserve.
     deadline: z.iso.datetime().optional(),
   }),
 });
@@ -26,7 +26,7 @@ export const ReleaseStockCmd = Envelope.extend({
 });
 export type ReleaseStockCmd = z.infer<typeof ReleaseStockCmd>;
 
-// EVENT SCHEMAS
+// event schemas
 export const StockReservedEvt = Envelope.extend({
   type: z.literal("checkout.evt.inventory.reserved"),
   payload: z.object({}),
@@ -45,7 +45,7 @@ export const StockRejectedEvt = Envelope.extend({
 });
 export type StockRejectedEvt = z.infer<typeof StockRejectedEvt>;
 
-// DISCRIMINATED UNIONS
+// discriminated unions
 export const InventoryCommand = z.discriminatedUnion("type", [
   ReserveStockCmd,
   ReleaseStockCmd,

@@ -28,11 +28,7 @@ import { charge, refundCharge, slowProvider, type ChargeResult } from "./provide
 
 const CONSUMER = "payment";
 
-/**
- * Payment is the saga's pivot step: once captured in time, the order is
- * confirmed. The one refund case is a charge that lands after the order timed
- * out; the order service then sends a refund command.
- */
+// the saga's pivot step. The only refund is for a charge that lands after the order timed out.
 @Injectable()
 export class PaymentHandler implements OnApplicationBootstrap, BeforeApplicationShutdown {
   private readonly log = new Logger(PaymentHandler.name);
@@ -68,22 +64,18 @@ export class PaymentHandler implements OnApplicationBootstrap, BeforeApplication
     if (cmd.type === "checkout.cmd.payment.refund") return this.refund(cmd);
     const db = this.database.db;
 
-    // Already decided for this order (e.g. a duplicate command): do not charge again.
     const [existing] = await db.select().from(payments).where(eq(payments.orderId, cmd.orderId));
     if (existing) return;
 
     const { deadline } = cmd.payload;
     let result: ChargeResult;
     if (deadline && Date.parse(deadline) < Date.now()) {
-      // The order stopped waiting (it timed out); charging now would take
-      // money for an order that is being cancelled.
+      // the order timed out and is being cancelled: don't take its money.
       result = { ok: false, reason: "the order stopped waiting for payment" };
     } else {
-      // The slow external call stays outside the transaction so it does not hold
-      // a connection; the provider dedupes on the order id if we retry.
+      // outside the transaction so a slow call doesn't hold a connection.
       result = await charge(cmd.orderId, cmd.payload.amount);
-      // Failure lab: the provider answers late, after the order's deadline.
-      // The card is charged anyway, so the saga has to refund it.
+      // failure lab: charged, but the answer lands after the deadline, so the saga refunds it.
       const lab = baggageValue(LAB_KEY);
       if (lab && deadline && this.faults.isSlow(lab)) await slowProvider(deadline);
     }
@@ -112,10 +104,7 @@ export class PaymentHandler implements OnApplicationBootstrap, BeforeApplication
     if (wrote) this.relay.nudge();
   }
 
-  /**
-   * Compensation for a charge that landed after the order gave up on it.
-   * Idempotent: only a CAPTURED payment is refunded, and it always confirms.
-   */
+  // idempotent: only a CAPTURED payment is refunded, and it always confirms.
   private async refund(cmd: RefundPaymentCmd): Promise<void> {
     const [payment] = await this.database.db.select().from(payments).where(eq(payments.orderId, cmd.orderId));
     if (payment?.status === "CAPTURED") await refundCharge(cmd.orderId, payment.amount);

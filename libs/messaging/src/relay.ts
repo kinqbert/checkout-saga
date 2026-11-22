@@ -10,19 +10,13 @@ export interface RelayOptions {
   db: NodePgDatabase<any>;
   table: OutboxTable;
   js: JetStreamClient;
-  /** Poll interval when idle. `nudge()` wakes the relay up earlier. */
   intervalMs?: number;
   batchSize?: number;
   log?: (msg: string, err?: unknown) => void;
 }
 
-/**
- * Publishes unpublished outbox rows to JetStream in `seq` order and marks them
- * published. Rows are locked with SKIP LOCKED, so running several relay
- * instances is safe. Publishing is at-least-once: a crash between publish and
- * the UPDATE republishes, which the stream drops as a duplicate (msgID = row
- * id) inside its duplicate window, and consumer inboxes drop after it.
- */
+// publishes outbox rows in order (SKIP LOCKED, so instances can share it). At-least-once:
+// a republish after a crash is dropped by JetStream (msgID = row id) and by consumer inboxes.
 export class OutboxRelay {
   private running = false;
   private wake?: () => void;
@@ -49,7 +43,6 @@ export class OutboxRelay {
     await this.loop;
   }
 
-  /** Call after committing a transaction that wrote outbox rows. */
   nudge(): void {
     this.wake?.();
   }
@@ -79,7 +72,6 @@ export class OutboxRelay {
     });
   }
 
-  /** Publishes one batch. Returns how many rows it published. */
   async flush(): Promise<number> {
     const { db, table, js } = this.opts;
     return db.transaction(async (tx) => {
@@ -113,8 +105,7 @@ export class OutboxRelay {
               msgID: row.id,
               headers: h,
             });
-            // A row published before a crash, then again after the restart:
-            // JetStream recognises the id and keeps only the first copy.
+            // re-published after a crash: JetStream kept only the first copy.
             if (ack.duplicate) {
               span.setAttribute("messaging.nats.duplicate", true);
               span.addEvent("duplicate dropped by JetStream (same message id)");
