@@ -27,3 +27,20 @@ export function charge(idempotencyKey: string, amount: number): Promise<ChargeRe
     },
   );
 }
+
+/** Refunds a captured charge (same idempotency key as the charge). */
+export function refundCharge(idempotencyKey: string, amount: number): Promise<void> {
+  return withSpan(
+    "psp.refund",
+    { kind: SpanKind.CLIENT, attributes: { "psp.idempotency_key": idempotencyKey, "psp.amount": amount } },
+    () => new Promise<void>((r) => setTimeout(r, 100 + Math.random() * 200)),
+  );
+}
+
+/** Failure lab "slow provider": its answer arrives 3 s after the order's deadline. */
+export function slowProvider(deadline: string): Promise<void> {
+  const ms = Math.max(0, Date.parse(deadline) + 3000 - Date.now());
+  return withSpan("demo: slow provider (failure lab)", { attributes: { "demo.hold_ms": ms } }, () =>
+    new Promise<void>((r) => setTimeout(r, ms)),
+  );
+}

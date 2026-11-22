@@ -1,8 +1,12 @@
-import { CheckoutSaga, SagaEvent, TransitionResult } from "./saga.types.js";
+import { CheckoutSaga, SagaContext, SagaEvent, TransitionResult } from "./saga.types.js";
+
+export const STOCK_TIMEOUT_REASON = "inventory did not answer in time";
+export const PAYMENT_TIMEOUT_REASON = "payment did not answer in time";
 
 export function handleSagaAwaitingStock(
   saga: CheckoutSaga,
   event: SagaEvent,
+  ctx: SagaContext,
 ): TransitionResult {
   switch (event.type) {
     case "checkout.evt.inventory.reserved": {
@@ -11,7 +15,7 @@ export function handleSagaAwaitingStock(
         messages: [
           {
             type: "checkout.cmd.payment.capture",
-            payload: { amount: saga.amount },
+            payload: { amount: saga.amount, deadline: ctx.deadline },
           },
         ],
       };
@@ -31,6 +35,15 @@ export function handleSagaAwaitingStock(
             },
           },
         ],
+      };
+    }
+    // Inventory never answered. Its reserve command carries the same deadline,
+    // so it won't reserve after this; a reservation that raced the deadline is
+    // released when its late reply arrives (see handleLateReply).
+    case "saga.timeout": {
+      return {
+        saga: { ...saga, cancelReason: STOCK_TIMEOUT_REASON, state: "CANCELLED" },
+        messages: [{ type: "checkout.evt.order.cancelled", payload: { reason: STOCK_TIMEOUT_REASON } }],
       };
     }
     default: {
@@ -73,6 +86,14 @@ export function handleSagaAwaitingPayment(
         ],
       };
     }
+    // Payment never answered: give the stock back and cancel. A charge that
+    // lands after this is refunded when its late reply arrives.
+    case "saga.timeout": {
+      return {
+        saga: { ...saga, cancelReason: PAYMENT_TIMEOUT_REASON, state: "RELEASING_STOCK" },
+        messages: [{ type: "checkout.cmd.inventory.release", payload: {} }],
+      };
+    }
     default: {
       return {
         saga,
@@ -106,10 +127,23 @@ export function handleSagaReleasingStock(
     }
 
     default: {
-      return {
-        saga,
-        messages: [],
-      };
+      return handleLateReply(saga, event);
     }
+  }
+}
+
+/**
+ * A step succeeded after the saga had stopped waiting for it (it timed out).
+ * The state stays as it is; the late success is compensated instead: stock
+ * reserved too late is released, a card charged too late is refunded.
+ */
+export function handleLateReply(saga: CheckoutSaga, event: SagaEvent): TransitionResult {
+  switch (event.type) {
+    case "checkout.evt.inventory.reserved":
+      return { saga, messages: [{ type: "checkout.cmd.inventory.release", payload: {} }] };
+    case "checkout.evt.payment.captured":
+      return { saga, messages: [{ type: "checkout.cmd.payment.refund", payload: {} }] };
+    default:
+      return { saga, messages: [] };
   }
 }

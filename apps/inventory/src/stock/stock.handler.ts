@@ -85,6 +85,13 @@ export class StockHandler implements OnApplicationBootstrap, BeforeApplicationSh
 
   /** All-or-nothing: either every line is reserved or none is. */
   private async reserve(tx: Tx, cmd: ReserveStockCmd): Promise<void> {
+    // The order stopped waiting (it timed out and cancelled): reserving now
+    // would hold stock nobody will ever release.
+    if (cmd.payload.deadline && Date.parse(cmd.payload.deadline) < Date.now()) {
+      const payload = { reason: "the order stopped waiting for stock", skus: [] };
+      await this.emit(tx, { type: "checkout.evt.inventory.rejected", payload }, cmd);
+      return;
+    }
     const items: Item[] = cmd.payload.items;
     const skus = items.map((i) => i.sku);
     // Lock in a stable order so two concurrent reservations cannot deadlock.

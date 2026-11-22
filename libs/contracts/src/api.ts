@@ -28,6 +28,8 @@ export interface OrderView {
   lines: OrderLine[];
   cancelReason: string | null;
   traceId: string | null;
+  /** While the saga waits on another service: when it gives up (ISO), else null. */
+  deadlineAt: string | null;
   createdAt: string;
   updatedAt: string;
   transitions?: OrderTransitionView[];

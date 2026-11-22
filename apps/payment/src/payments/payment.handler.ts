@@ -1,4 +1,4 @@
-import { PaymentCommand } from "@checkout/contracts";
+import { PaymentCommand, type RefundPaymentCmd } from "@checkout/contracts";
 import {
   claimMessage,
   LabFaults,
@@ -19,17 +19,19 @@ import {
   type BeforeApplicationShutdown,
   type OnApplicationBootstrap,
 } from "@nestjs/common";
-import { eq } from "drizzle-orm";
+import { baggageValue, LAB_KEY } from "@checkout/telemetry";
+import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { inbox, outbox, payments } from "../db/schema.js";
 import { BUS, DB } from "../infra.js";
-import { charge } from "./provider.js";
+import { charge, refundCharge, slowProvider, type ChargeResult } from "./provider.js";
 
 const CONSUMER = "payment";
 
 /**
- * Payment is the saga's pivot step: once captured the order is confirmed, so
- * there is no refund compensation to design.
+ * Payment is the saga's pivot step: once captured in time, the order is
+ * confirmed. The one refund case is a charge that lands after the order timed
+ * out; the order service then sends a refund command.
  */
 @Injectable()
 export class PaymentHandler implements OnApplicationBootstrap, BeforeApplicationShutdown {
@@ -63,15 +65,28 @@ export class PaymentHandler implements OnApplicationBootstrap, BeforeApplication
     const parsed = PaymentCommand.safeParse(data);
     if (!parsed.success) throw new PoisonMessageError(parsed.error.message);
     const cmd = parsed.data;
+    if (cmd.type === "checkout.cmd.payment.refund") return this.refund(cmd);
     const db = this.database.db;
 
     // Already decided for this order (e.g. a duplicate command): do not charge again.
     const [existing] = await db.select().from(payments).where(eq(payments.orderId, cmd.orderId));
     if (existing) return;
 
-    // The slow external call stays outside the transaction so it does not hold
-    // a connection; the provider dedupes on the order id if we retry.
-    const result = await charge(cmd.orderId, cmd.payload.amount);
+    const { deadline } = cmd.payload;
+    let result: ChargeResult;
+    if (deadline && Date.parse(deadline) < Date.now()) {
+      // The order stopped waiting (it timed out); charging now would take
+      // money for an order that is being cancelled.
+      result = { ok: false, reason: "the order stopped waiting for payment" };
+    } else {
+      // The slow external call stays outside the transaction so it does not hold
+      // a connection; the provider dedupes on the order id if we retry.
+      result = await charge(cmd.orderId, cmd.payload.amount);
+      // Failure lab: the provider answers late, after the order's deadline.
+      // The card is charged anyway, so the saga has to refund it.
+      const lab = baggageValue(LAB_KEY);
+      if (lab && deadline && this.faults.isSlow(lab)) await slowProvider(deadline);
+    }
 
     const wrote = await db.transaction(async (tx) => {
       if (!(await claimMessage(tx, inbox, cmd.id, CONSUMER))) return false;
@@ -91,6 +106,27 @@ export class PaymentHandler implements OnApplicationBootstrap, BeforeApplication
       const event = result.ok
         ? { type: "checkout.evt.payment.captured" as const, payload: {} }
         : { type: "checkout.evt.payment.failed" as const, payload: { reason: result.reason } };
+      await enqueue(tx, outbox, [outboxRow(sagaEnvelope(event, cmd.orderId, cmd.id))]);
+      return true;
+    });
+    if (wrote) this.relay.nudge();
+  }
+
+  /**
+   * Compensation for a charge that landed after the order gave up on it.
+   * Idempotent: only a CAPTURED payment is refunded, and it always confirms.
+   */
+  private async refund(cmd: RefundPaymentCmd): Promise<void> {
+    const [payment] = await this.database.db.select().from(payments).where(eq(payments.orderId, cmd.orderId));
+    if (payment?.status === "CAPTURED") await refundCharge(cmd.orderId, payment.amount);
+
+    const wrote = await this.database.db.transaction(async (tx) => {
+      if (!(await claimMessage(tx, inbox, cmd.id, CONSUMER))) return false;
+      await tx
+        .update(payments)
+        .set({ status: "REFUNDED" })
+        .where(and(eq(payments.orderId, cmd.orderId), eq(payments.status, "CAPTURED")));
+      const event = { type: "checkout.evt.payment.refunded" as const, payload: {} };
       await enqueue(tx, outbox, [outboxRow(sagaEnvelope(event, cmd.orderId, cmd.id))]);
       return true;
     });

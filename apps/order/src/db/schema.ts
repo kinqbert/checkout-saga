@@ -10,6 +10,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { SagaStates } from "../saga/saga.types.js";
 
 const timefields = {
@@ -36,8 +37,18 @@ export const orders = ordersSchema.table("orders", {
   idempotencyKey: text().unique(),
   /** Trace that started the saga, so the UI can show it. */
   traceId: text(),
+  /**
+   * While the saga waits on another service: when it gives up. The timeout
+   * sweeper picks up rows past it, so a deadline survives a restart.
+   */
+  deadlineAt: timestamp({ withTimezone: true }),
+  /**
+   * W3C trace context (and baggage) of the saga's last step, so work the
+   * order service starts on its own, like a timeout, joins the same trace.
+   */
+  traceHeaders: jsonb().$type<Record<string, string>>(),
   ...timefields,
-});
+}, (t) => [index().on(t.deadlineAt).where(sql`${t.deadlineAt} is not null`)]);
 
 /** Audit log of saga state changes, shown as the order timeline. */
 export const orderTransitions = ordersSchema.table(

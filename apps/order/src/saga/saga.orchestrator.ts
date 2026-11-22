@@ -2,10 +2,12 @@ import { Item } from "@checkout/contracts";
 import {
   CheckoutSaga,
   OutgoingMessage,
+  SagaContext,
   SagaEvent,
   TransitionResult,
 } from "./saga.types.js";
 import {
+  handleLateReply,
   handleSagaAwaitingPayment,
   handleSagaAwaitingStock,
   handleSagaReleasingStock,
@@ -15,6 +17,7 @@ export function startSaga(
   orderId: string,
   items: Item[],
   amount: number,
+  ctx: SagaContext,
 ): TransitionResult {
   const saga: CheckoutSaga = {
     orderId,
@@ -25,7 +28,7 @@ export function startSaga(
 
   const message: OutgoingMessage = {
     type: "checkout.cmd.inventory.reserve",
-    payload: { items },
+    payload: { items, deadline: ctx.deadline },
   };
 
   const result: TransitionResult = {
@@ -39,15 +42,17 @@ export function startSaga(
 export function transition(
   saga: CheckoutSaga,
   event: SagaEvent,
+  ctx: SagaContext,
 ): TransitionResult {
   switch (saga.state) {
     case "AWAITING_STOCK":
-      return handleSagaAwaitingStock(saga, event);
+      return handleSagaAwaitingStock(saga, event, ctx);
     case "AWAITING_PAYMENT":
       return handleSagaAwaitingPayment(saga, event);
     case "RELEASING_STOCK":
       return handleSagaReleasingStock(saga, event);
     case "CANCELLED":
+      return handleLateReply(saga, event);
     case "CONFIRMED":
       return { saga, messages: [] };
     default:

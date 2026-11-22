@@ -12,7 +12,7 @@ A saga can be **choreographed**, where each service reacts to the others' events
 
 Orchestrate. The order service owns the saga. It sends commands (`checkout.cmd.*`) and reacts to replies (`checkout.evt.*`). The state machine is a pure function `transition(saga, event) → { saga, messages }`. The I/O shell around it is thin.
 
-Step order follows one rule: **do the easiest step to undo first, and the step you can't undo last**. Reserving stock is easy to release, so it comes first. Capturing a payment would need a refund, so it comes last, and it becomes the pivot. After a successful capture nothing can fail, so there is no refund compensation to design.
+Step order follows one rule: **do the easiest step to undo first, and the step you can't undo last**. Reserving stock is easy to release, so it comes first. Capturing a payment would need a refund, so it comes last, and it becomes the pivot. After a successful capture nothing can fail, so there is no refund compensation to design, with one exception added later: a capture that lands after the saga timed out is refunded (see the README, "Timeouts").
 
 Notification is **not** part of the saga. Order confirmed/cancelled are facts that notify subscribes to. A failing e-mail provider must never roll back a paid order.
 

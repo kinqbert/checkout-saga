@@ -6,13 +6,14 @@ import {
   sagaEnvelope,
   type Database,
 } from "@checkout/messaging";
-import { currentTraceId, slowModeHold, withSpan } from "@checkout/telemetry";
+import { currentTraceHeaders, currentTraceId, slowModeHold, withSpan } from "@checkout/telemetry";
 import { Inject, Injectable } from "@nestjs/common";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { orders, orderTransitions, outbox, products } from "../db/schema.js";
 import { DB } from "../infra.js";
 import { startSaga } from "../saga/saga.orchestrator.js";
+import { STEP_TIMEOUT_MS } from "../saga/saga.runner.js";
 
 export class UnknownProductsError extends Error {
   constructor(readonly skus: string[]) {
@@ -30,6 +31,7 @@ export function toView(row: OrderRow): OrderView {
     lines: row.items,
     cancelReason: row.cancelReason,
     traceId: row.traceId,
+    deadlineAt: row.deadlineAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -95,7 +97,8 @@ export class OrdersService {
 
         const orderId = randomUUID();
         span.setAttribute("checkout.order_id", orderId);
-        const { saga, messages } = startSaga(orderId, items, amount);
+        const deadline = new Date(Date.now() + STEP_TIMEOUT_MS);
+        const { saga, messages } = startSaga(orderId, items, amount, { deadline: deadline.toISOString() });
 
         const [row] = await tx
           .insert(orders)
@@ -106,6 +109,8 @@ export class OrdersService {
             items: lines,
             idempotencyKey: idempotencyKey ?? null,
             traceId: currentTraceId() ?? null,
+            deadlineAt: deadline,
+            traceHeaders: currentTraceHeaders(),
           })
           .onConflictDoNothing({ target: orders.idempotencyKey })
           .returning();
